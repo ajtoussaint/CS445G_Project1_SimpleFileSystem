@@ -57,10 +57,37 @@ void WriteSInt(unsigned char *arr, int index, short int value){
 
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
 void _Create(struct FileControlBlock *fcb, short int size, char *name, unsigned char *memory, struct VolumeControlBlock *vcb, unsigned int directory){
+	//print inputs to test validity - remove
 	printf("I'm getting:\nsize:%u\nname:%s\nvcb fbc:%u\ndir:%u\n", size, name, vcb->freeBlockCount, directory);
+	
+	//ensure the file size is at least less than the free block count
+	if(size > memory[vcb->freeBlockCount]){
+		printf("Could not Create File. Desired File Size is too big!\n");
+	}
+	//search the bitmap for a free space of corresponding size
+		//if no space exists error (for now)
+		//if space exists...
+		//fill it in and get the location
+		//create a directory entry with fname, start block, size
+		//update vcb free block count
+		//run the open function to give the fcb values
+	
 }
 //helper function to prevent redeclaring constant values
 void Create(struct FileControlBlock *fcb, short int size, char *name);
+
+
+//helper function to read bitmap
+short int ReadBit(unsigned char *arr, int bitmapStart, int bitIndex){
+	//get the corect byte
+	unsigned char byte = arr[bitmapStart + bitIndex/8];
+	if((byte & (1 << (7-(bitIndex%8)))) == 0){
+		return 0;
+	}else{
+		return 1;
+	}
+}
+
 
 int main() {
 	//allocate 1MB of memory
@@ -104,8 +131,17 @@ int main() {
 	void Create(struct FileControlBlock *fcb, short int size, char *name){
 		_Create(fcb,size,name,memory,&volumeControlBlock,DIRECTORY);
 	}
+	//testing Create Function
 	struct FileControlBlock fcb;
 	Create(&fcb,10, "world.txt");
+	
+	//testing space finding
+	unsigned char array[4] = {0b10101100, 0b00111111, 0b11100000, 0b11111111};
+	//read bit at location n L->R
+	int n = 10;
+	int x = ReadBit(array, 0, 19);
+	int y = ReadBit(array, 0, 31);
+	printf("x:%d (should be 0) and y:%d (should be 1)\n", x, y);
 	
 	return 0;
 }
