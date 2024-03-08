@@ -3,16 +3,17 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+struct FileControlBlock{
+	int fileSizeBlocks;
+	int firstBlockIndex;
+};
+
+//variables store the memory index of the value
 struct VolumeControlBlock{
 	int numberOfBlocks;
 	int sizeOfBlock;
 	int freeBlockCount;
-	//bitmap
-};
-
-struct FileControlBlock{
-	int fileSizeBlocks;
-	int firstBlockIndex;
+	int bitmap;
 };
 
 unsigned int ReadUInt(unsigned char *arr, int index){
@@ -53,6 +54,14 @@ void WriteSInt(unsigned char *arr, int index, short int value){
 	}
 }
 
+
+//pointer to a FileControlBlock struct for output, size of the file in blocks, file name
+void _Create(struct FileControlBlock *fcb, short int size, char *name, unsigned char *memory, struct VolumeControlBlock *vcb, unsigned int directory){
+	printf("I'm getting:\nsize:%u\nname:%s\nvcb fbc:%u\ndir:%u\n", size, name, vcb->freeBlockCount, directory);
+}
+//helper function to prevent redeclaring constant values
+void Create(struct FileControlBlock *fcb, short int size, char *name);
+
 int main() {
 	//allocate 1MB of memory
 	unsigned char memory[1048576]; // each array index represents a byte
@@ -63,12 +72,11 @@ int main() {
 	//4 bytes for an unsigned int for the size of blocks - 2048 Bytes (array spaces) [4]
 	//4 bytes for an unsigned int for the free block count - 507 (first 5 blocks are meta) [8]
 	//64 bytes for the bit map because 512 blocks exist (512 - 1vcb - 4dir) = 64 [12]
-
-	unsigned int VOLUME_CONTROL_BLOCK = 0;
-	unsigned int NUMBER_OF_BLOCKS = VOLUME_CONTROL_BLOCK+ 0;
-	unsigned int SIZE_OF_BLOCKS = VOLUME_CONTROL_BLOCK+ 4;
-	unsigned int FREE_BLOCK_COUNT = VOLUME_CONTROL_BLOCK+ 8;
-	unsigned int FREE_BLOCK_BIT_MAP = VOLUME_CONTROL_BLOCK+ 12;
+	struct VolumeControlBlock volumeControlBlock;
+	volumeControlBlock.numberOfBlocks = 0;
+	volumeControlBlock.sizeOfBlock = 4;
+	volumeControlBlock.freeBlockCount = 8;
+	volumeControlBlock.bitmap = 12;
 
 	//second-fifth data block (2048 - 10239) is reserved for the directory 
 		//Each entry includes filename, start block number, and file size (16 bytes)
@@ -77,20 +85,27 @@ int main() {
 		//name is a series of unsigned 9 char (1 byte ec.) and a 3 byte extension = 12 bytes
 		// 2 bytes for size (unsigned short int)
 		// 2 bytes for location (unsigned short int)	
-	unsigned int DIRECTORY = 2048;
-	unsigned int DIRECTORY_ENTRY_SIZE = 16;
+	const unsigned int DIRECTORY = 2048;
+	const unsigned int DIRECTORY_ENTRY_SIZE = 16;
 	
 	//initialize default values:
-	WriteUInt(memory, NUMBER_OF_BLOCKS, 512);
-	WriteUInt(memory, SIZE_OF_BLOCKS, 2048);
-	WriteUInt(memory, FREE_BLOCK_COUNT, 507);
+	WriteUInt(memory, volumeControlBlock.numberOfBlocks, 512);
+	WriteUInt(memory, volumeControlBlock.sizeOfBlock, 2048);
+	WriteUInt(memory, volumeControlBlock.freeBlockCount, 507);
 	//How to do the bit map?
 
-	unsigned int num = ReadUInt(memory, NUMBER_OF_BLOCKS);	
-	unsigned int size = ReadUInt(memory, SIZE_OF_BLOCKS);	
-	unsigned int free = ReadUInt(memory, FREE_BLOCK_COUNT);	
+	unsigned int num = ReadUInt(memory, volumeControlBlock.numberOfBlocks);	
+	unsigned int size = ReadUInt(memory, volumeControlBlock.sizeOfBlock);	
+	unsigned int free = ReadUInt(memory, volumeControlBlock.freeBlockCount);	
 	
-	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n", num, size, free);
+	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n\n", num, size, free);
+	
+	//function to create a file
+	void Create(struct FileControlBlock *fcb, short int size, char *name){
+		_Create(fcb,size,name,memory,&volumeControlBlock,DIRECTORY);
+	}
+	struct FileControlBlock fcb;
+	Create(&fcb,10, "world.txt");
 	
 	return 0;
 }
