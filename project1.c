@@ -55,38 +55,92 @@ void WriteSInt(unsigned char *arr, int index, short int value){
 }
 
 
-//pointer to a FileControlBlock struct for output, size of the file in blocks, file name
-void _Create(struct FileControlBlock *fcb, short int size, char *name, unsigned char *memory, struct VolumeControlBlock *vcb, unsigned int directory){
-	//print inputs to test validity - remove
-	printf("I'm getting:\nsize:%u\nname:%s\nvcb fbc:%u\ndir:%u\n", size, name, vcb->freeBlockCount, directory);
-	
-	//ensure the file size is at least less than the free block count
-	if(size > memory[vcb->freeBlockCount]){
-		printf("Could not Create File. Desired File Size is too big!\n");
-	}
-	//search the bitmap for a free space of corresponding size
-		//if no space exists error (for now)
-		//if space exists...
-		//fill it in and get the location
-		//create a directory entry with fname, start block, size
-		//update vcb free block count
-		//run the open function to give the fcb values
-	
-}
-//helper function to prevent redeclaring constant values
-void Create(struct FileControlBlock *fcb, short int size, char *name);
-
-
 //helper function to read bitmap
 short int ReadBit(unsigned char *arr, int bitmapStart, int bitIndex){
-	//get the corect byte
+	//get the correct byte
 	unsigned char byte = arr[bitmapStart + bitIndex/8];
+	//check the bit
 	if((byte & (1 << (7-(bitIndex%8)))) == 0){
 		return 0;
 	}else{
 		return 1;
 	}
 }
+
+//helper function to write to bitmap
+void WriteBit(short int value, unsigned char *arr, int bitmapStart, int bitIndex){
+	short int current = ReadBit(arr, bitmapStart, bitIndex);
+	if(current != value){
+		//get the relevant byte
+		unsigned char byte = arr[bitmapStart + bitIndex/8];
+		//flip the bit
+		byte = byte ^ (1 << (7-(bitIndex%8)));
+		//write to the array
+		arr[bitmapStart + bitIndex/8] = byte;
+	}
+}
+
+//helper function to find first space in bitmap of size n
+//input size of space desired and index of first block will be returned
+//bitmap size is 512 for this example (512*2k blocks = 1M)
+int FreeSpaceAddress(int spaceSize, unsigned char *arr, int bitmapStart, int bitmapSize){
+	int length = 0;
+	int index = -1;
+	for(int i = 0; i<bitmapSize; i++){
+		short int currentBit = ReadBit(arr, bitmapStart, i);
+		//if the bit shows an open space
+		if(currentBit == 0){
+			//increase the tracked space length
+			length++;
+			//if this is the first space in a section save the index
+			if(index < 0){
+				index = i;
+			}
+			//if the section size is the desired size return the index
+			if(length >= spaceSize){
+				return index;
+			}
+		}else{
+			//if the bit shows a closed space
+			//reset the counter and length
+			length = 0;
+			index = -1;
+		}
+	}
+	//if no space is found return(-1)
+	return -1;
+}
+
+//pointer to a FileControlBlock struct for output, size of the file in blocks, file name
+void _Create(struct FileControlBlock *fcb, short int size, char *name, unsigned char *memory, struct VolumeControlBlock *vcb, unsigned int directory){
+	//print inputs to test validity - remove
+	printf("I'm getting:\nsize:%u\nname:%s\nvcb fbc:%u\ndir:%u\n", size, name, vcb->freeBlockCount, directory);
+	
+	//ensure the file size is at least less than the free block count
+	if(size > ReadUInt(memory,(vcb->freeBlockCount))){
+		printf("Could not Create File. Desired File Size is too big!\n");
+	}else{
+		//search the bitmap for a free space of corresponding size
+		int blockIndex = FreeSpaceAddress(size, memory, vcb->bitmap, ReadUInt(memory, vcb->numberOfBlocks));
+		printf("blockIndex is %d\n", blockIndex);
+		if(blockIndex < 0){
+			//if no space exists error (for now)
+			printf("There is not a large enough space available for that file\n");
+		}else{
+			//if space exists...
+			//!!!! but before that use the bit write function to initizliae the map in main !!!!
+			//fill it in and get the location
+			//create a directory entry with fname, start block, size
+			//update vcb free block count
+			//run the open function to give the fcb values
+		}
+		
+		
+	}
+	
+}
+//helper function to prevent redeclaring constant values
+void Create(struct FileControlBlock *fcb, short int size, char *name);
 
 
 int main() {
@@ -119,7 +173,10 @@ int main() {
 	WriteUInt(memory, volumeControlBlock.numberOfBlocks, 512);
 	WriteUInt(memory, volumeControlBlock.sizeOfBlock, 2048);
 	WriteUInt(memory, volumeControlBlock.freeBlockCount, 507);
-	//How to do the bit map?
+	//Write the first 5 bits of the bitmap as in use
+	for(int i =0; i<5; i++){
+		WriteBit(1, memory, volumeControlBlock.bitmap, i);
+	}
 
 	unsigned int num = ReadUInt(memory, volumeControlBlock.numberOfBlocks);	
 	unsigned int size = ReadUInt(memory, volumeControlBlock.sizeOfBlock);	
@@ -134,14 +191,6 @@ int main() {
 	//testing Create Function
 	struct FileControlBlock fcb;
 	Create(&fcb,10, "world.txt");
-	
-	//testing space finding
-	unsigned char array[4] = {0b10101100, 0b00111111, 0b11100000, 0b11111111};
-	//read bit at location n L->R
-	int n = 10;
-	int x = ReadBit(array, 0, 19);
-	int y = ReadBit(array, 0, 31);
-	printf("x:%d (should be 0) and y:%d (should be 1)\n", x, y);
 	
 	return 0;
 }
@@ -196,6 +245,30 @@ int main() {
 	mint = ReadShortInt(array,0);
 	printf("finally %hd and %hd\n", mint, mint2);*/
 	
+//testing space finding
+	/*unsigned char array[4] = {0b10101100, 0b00111111, 0b11100000, 0b11111111};
+	//read bit at location n L->R
+	int n = 10;
+	int x = ReadBit(array, 0, 19);
+	int y = ReadBit(array, 0, 31);
+	printf("x:%d (should be 0) and y:%d (should be 1)\n", x, y);*/
+	
+//testing space finding
+	/*unsigned char array[4] = {0b10101100, 0b00111111, 0b11100000, 0b11111111};
+	//read bit at location n L->R
+	int n = 10;
+	int x = ReadBit(array, 0, 19);
+	int y = ReadBit(array, 0, 31);
+	//printf("x:%d (should be 0) and y:%d (should be 1)\n", x, y);
+	int z = FreeSpaceAddress(9, array, 0, 32);
+	printf("Expecting -1: Actual %d\n", z);*/
+	
+//testing bit writing
+	/*unsigned char array[4] = {0b00000000, 0b00000000, 0b00000000, 0b00000000};
+	int x = ReadBit(array, 0, 19);
+	WriteBit(1, array, 0, 19);
+	int y = ReadBit(array, 0, 19);
+	printf("Result 1:%d, Result2:%d",x,y);*/
 
 
 
