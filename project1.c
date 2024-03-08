@@ -122,15 +122,21 @@ void _Create(struct FileControlBlock *fcb, short int size, char *name, unsigned 
 	}else{
 		//search the bitmap for a free space of corresponding size
 		int blockIndex = FreeSpaceAddress(size, memory, vcb->bitmap, ReadUInt(memory, vcb->numberOfBlocks));
-		printf("blockIndex is %d\n", blockIndex);
+		printf("blockIndex is %d\n", blockIndex);//shows the index of the first space found
 		if(blockIndex < 0){
 			//if no space exists error (for now)
 			printf("There is not a large enough space available for that file\n");
 		}else{
 			//if space exists...
-			//!!!! but before that use the bit write function to initizliae the map in main !!!!
+			
 			//fill it in and get the location
+			for(int i =0; i<size; i++){
+				WriteBit(1, memory, vcb->bitmap, (blockIndex + i));
+			}
 			//create a directory entry with fname, start block, size
+				//parse out file name and extension
+				//start block is blockIndex and size is given
+				//find the next open directory entry (see notecard)
 			//update vcb free block count
 			//run the open function to give the fcb values
 		}
@@ -190,7 +196,7 @@ int main() {
 	}
 	//testing Create Function
 	struct FileControlBlock fcb;
-	Create(&fcb,10, "world.txt");
+	Create(&fcb,10, "world.txt");//expect index at block 5, takes up 10 blocks, next guy at 15
 	
 	return 0;
 }
