@@ -15,7 +15,7 @@ struct FileControlBlock{
 	int firstBlockIndex;
 };
 
-unsigned int ReadUIntFromArray(unsigned char *arr, int index){
+unsigned int ReadUInt(unsigned char *arr, int index){
 	
 	unsigned int value = 0;
 	
@@ -30,14 +30,14 @@ unsigned int ReadUIntFromArray(unsigned char *arr, int index){
 	return value;
 }
 
-void WriteUIntToArray(unsigned char *arr, int index, unsigned int value){
+void WriteUInt(unsigned char *arr, int index, unsigned int value){
 	//write 4 bytes of value
 	for(int i=0; i<4; i++){
 		arr[i + index] = (value >> ((3-i)*8)) & 0xFF;
 	}
 }
 
-short int ReadShortInt(unsigned char *arr, int index){
+short int ReadSInt(unsigned char *arr, int index){
 	short int value = 0;
 	arr += index;
 	for(int i = 0; i < 2; i++){
@@ -47,40 +47,50 @@ short int ReadShortInt(unsigned char *arr, int index){
 	return value;
 }
 
-void WriteShortInt(unsigned char *arr, int index, short int value){
+void WriteSInt(unsigned char *arr, int index, short int value){
 	for(int i=0; i<2; i++){
 		arr[i + index] = (value >> ((1-i)*8)) & 0xFF;
 	}
 }
 
 int main() {
-	//allocate 1MB of memory, each entry in the array is a single byte
-	unsigned char memory[1048576];
+	//allocate 1MB of memory
+	unsigned char memory[1048576]; // each array index represents a byte
 	
-
-	
+	//set variables to indicate data structure locations
 	//first data block (0-2047) is used as the volume control block
-		//4 bytes for an unsigned int for number of blocks
-		//4 bytes for an unsigned int for the size of blocks
-		//4 bytes for an unsigned int for the free block count
-		
-			//bytes can be read as integers: "unsigned int value = *(unsigned int*)array;
-			/*You can also use a bit shift:
-			unsigned int value = 0;
-			for(int i = 0; i < bytes_to_read; i++){
-				value = (value << 8) | array[start + i];
-			}	
-			*/
-		//512 blocks are free (512 - vcb - 4dir) so 64 bytes for the bit map
-		
-	
+	//4 bytes for an unsigned int for number of blocks - 512 [0]
+	//4 bytes for an unsigned int for the size of blocks - 2048 Bytes (array spaces) [4]
+	//4 bytes for an unsigned int for the free block count - 507 (first 5 blocks are meta) [8]
+	//64 bytes for the bit map because 512 blocks exist (512 - 1vcb - 4dir) = 64 [12]
+
+	unsigned int VOLUME_CONTROL_BLOCK = 0;
+	unsigned int NUMBER_OF_BLOCKS = VOLUME_CONTROL_BLOCK+ 0;
+	unsigned int SIZE_OF_BLOCKS = VOLUME_CONTROL_BLOCK+ 4;
+	unsigned int FREE_BLOCK_COUNT = VOLUME_CONTROL_BLOCK+ 8;
+	unsigned int FREE_BLOCK_BIT_MAP = VOLUME_CONTROL_BLOCK+ 12;
+
 	//second-fifth data block (2048 - 10239) is reserved for the directory 
 		//Each entry includes filename, start block number, and file size (16 bytes)
 		//4 blocks are needed to store up to 507 file entries (1 block files)
 		
-		//name is a series of unsigned 9 char (1 byte ec.) and a 3 byte extension = 11 bytes
+		//name is a series of unsigned 9 char (1 byte ec.) and a 3 byte extension = 12 bytes
 		// 2 bytes for size (unsigned short int)
-		// 2 bytes for location (unsigned short int) - not long enough if blocks are small!
+		// 2 bytes for location (unsigned short int)	
+	unsigned int DIRECTORY = 2048;
+	unsigned int DIRECTORY_ENTRY_SIZE = 16;
+	
+	//initialize default values:
+	WriteUInt(memory, NUMBER_OF_BLOCKS, 512);
+	WriteUInt(memory, SIZE_OF_BLOCKS, 2048);
+	WriteUInt(memory, FREE_BLOCK_COUNT, 507);
+	//How to do the bit map?
+
+	unsigned int num = ReadUInt(memory, NUMBER_OF_BLOCKS);	
+	unsigned int size = ReadUInt(memory, SIZE_OF_BLOCKS);	
+	unsigned int free = ReadUInt(memory, FREE_BLOCK_COUNT);	
+	
+	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n", num, size, free);
 	
 	return 0;
 }
