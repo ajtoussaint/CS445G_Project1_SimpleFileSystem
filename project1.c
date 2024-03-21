@@ -3,25 +3,58 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+//allocate 1MB of memory
+unsigned char MEMORY[1048576]; // each array index represents a byte
+
+//variables store the memory index of the value
+struct VolumeControlBlock{
+	int BLOCK_COUNT;
+	int BLOCK_SIZE;
+	int FREE_BLOCKS;
+	int BITMAP_START;
+};
+
+//set variables to indicate data structure locations
+//first data block (0-2047) is used as the volume control block
+//4 bytes for an unsigned int for number of blocks - 512 [0]
+//4 bytes for an unsigned int for the size of blocks - 2048 Bytes (array spaces) [4]
+//4 bytes for an unsigned int for the free block count - 507 (first 5 blocks are meta) [8]
+//64 bytes for the bit map because 512 blocks exist (512 - 1vcb - 4dir) = 64 [12]
+const struct VolumeControlBlock VOLUME_CONTROL_BLOCK = {0, 4, 8, 12};
+
+//number of bits in the bitmap is declared as a constant
+const unsigned int BITMAP_NUM_BITS = 512;
+
+
+//second-fifth data block (2048 - 10239) is reserved for the directory 
+	//Each entry includes filename, start block number, and file size (16 bytes)
+	//4 blocks are needed to store up to 507 file entries (1 block files)
+	
+	//name is a series of 7 unsigned  char (1 byte ec.) and a 3 byte extension = 10 bytes
+	// 2 bytes for size (unsigned short int)
+	// 2 bytes for location (unsigned short int)	
+	// 2 bytes for pointer to next entry in linked list
+const unsigned int DIR_START = 2048;
+const unsigned int DIR_ENTRY_END = 16;
+const unsigned int DIR_ENTRY_NAME = 0;
+const unsigned int DIR_ENTRY_EXT = 7;
+const unsigned int DIR_ENTRY_SIZE = 10;
+const unsigned int DIR_ENTRY_LOC = 12;
+const unsigned int DIR_ENTRY_NEXT = 14;
+
 struct FileControlBlock{
 	int fileSizeBlocks;
 	int firstBlockIndex;
 };
 
-//variables store the memory index of the value
-struct VolumeControlBlock{
-	int numberOfBlocks;
-	int sizeOfBlock;
-	int freeBlockCount;
-	int bitmap;
-};
 
-unsigned int ReadUInt(unsigned char *arr, int index){
+
+unsigned int ReadUInt(int index){
 	
 	unsigned int value = 0;
 	
-	//move to specified location in array
-	arr += index;
+	//move to specified location in memory
+	unsigned char *arr = MEMORY + index;
 	
 	//read 4 bytes at that location into value
 	for(int i = 0; i < 4; i++){
@@ -31,16 +64,16 @@ unsigned int ReadUInt(unsigned char *arr, int index){
 	return value;
 }
 
-void WriteUInt(unsigned char *arr, int index, unsigned int value){
+void WriteUInt(int index, unsigned int value){
 	//write 4 bytes of value
 	for(int i=0; i<4; i++){
-		arr[i + index] = (value >> ((3-i)*8)) & 0xFF;
+		MEMORY[i + index] = (value >> ((3-i)*8)) & 0xFF;
 	}
 }
 
-short int ReadSInt(unsigned char *arr, int index){
+short int ReadSInt(int index){
 	short int value = 0;
-	arr += index;
+	unsigned char *arr = MEMORY + index;
 	for(int i = 0; i < 2; i++){
 		value = (value << 8) | *arr++;
 	}
@@ -48,17 +81,17 @@ short int ReadSInt(unsigned char *arr, int index){
 	return value;
 }
 
-void WriteSInt(unsigned char *arr, int index, short int value){
+void WriteSInt(int index, short int value){
 	for(int i=0; i<2; i++){
-		arr[i + index] = (value >> ((1-i)*8)) & 0xFF;
+		MEMORY[i + index] = (value >> ((1-i)*8)) & 0xFF;
 	}
 }
 
 
 //helper function to read bitmap
-short int ReadBit(unsigned char *arr, int bitmapStart, int bitIndex){
+short int ReadBit(int bitIndex){
 	//get the correct byte
-	unsigned char byte = arr[bitmapStart + bitIndex/8];
+	unsigned char byte = MEMORY[VOLUME_CONTROL_BLOCK.BITMAP_START + bitIndex/8];
 	//check the bit
 	if((byte & (1 << (7-(bitIndex%8)))) == 0){
 		return 0;
@@ -68,26 +101,26 @@ short int ReadBit(unsigned char *arr, int bitmapStart, int bitIndex){
 }
 
 //helper function to write to bitmap
-void WriteBit(short int value, unsigned char *arr, int bitmapStart, int bitIndex){
-	short int current = ReadBit(arr, bitmapStart, bitIndex);
+void WriteBit(int bitIndex, short int value){
+	short int current = ReadBit(bitIndex);
 	if(current != value){
 		//get the relevant byte
-		unsigned char byte = arr[bitmapStart + bitIndex/8];
+		unsigned char byte = MEMORY[VOLUME_CONTROL_BLOCK.BITMAP_START + bitIndex/8];
 		//flip the bit
 		byte = byte ^ (1 << (7-(bitIndex%8)));
 		//write to the array
-		arr[bitmapStart + bitIndex/8] = byte;
+		MEMORY[VOLUME_CONTROL_BLOCK.BITMAP_START + bitIndex/8] = byte;
 	}
 }
 
-//helper function to find first space in bitmap of size n
-//input size of space desired and index of first block will be returned
+//function to find first space in the bitmap
+//input size of space desired
 //bitmap size is 512 for this example (512*2k blocks = 1M)
-int FreeSpaceAddress(int spaceSize, unsigned char *arr, int bitmapStart, int bitmapSize){
+int FreeSpaceAddress(int spaceSize){
 	int length = 0;
 	int index = -1;
-	for(int i = 0; i<bitmapSize; i++){
-		short int currentBit = ReadBit(arr, bitmapStart, i);
+	for(int i = 0; i<BITMAP_NUM_BITS; i++){
+		short int currentBit = ReadBit(i);
 		//if the bit shows an open space
 		if(currentBit == 0){
 			//increase the tracked space length
@@ -112,26 +145,25 @@ int FreeSpaceAddress(int spaceSize, unsigned char *arr, int bitmapStart, int bit
 }
 
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
-void _Create(struct FileControlBlock *fcb, short int size, char *name, unsigned char *memory, struct VolumeControlBlock *vcb, unsigned int directory){
+void Create(struct FileControlBlock *fcb, short int size, char *name){
 	//print inputs to test validity - remove
-	printf("I'm getting:\nsize:%u\nname:%s\nvcb fbc:%u\ndir:%u\n", size, name, vcb->freeBlockCount, directory);
+	printf("I'm getting:\nsize:%u\nname:%s\nvcb fbc:%u\ndir:%u\n", size, name, VOLUME_CONTROL_BLOCK.FREE_BLOCKS, DIR_START);
 	
 	//ensure the file size is at least less than the free block count
-	if(size > ReadUInt(memory,(vcb->freeBlockCount))){
+	if(size > ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS)){
 		printf("Could not Create File. Desired File Size is too big!\n");
 	}else{
 		//search the bitmap for a free space of corresponding size
-		int blockIndex = FreeSpaceAddress(size, memory, vcb->bitmap, ReadUInt(memory, vcb->numberOfBlocks));
+		int blockIndex = FreeSpaceAddress(size);
 		printf("blockIndex is %d\n", blockIndex);//shows the index of the first space found
 		if(blockIndex < 0){
 			//if no space exists error (for now)
 			printf("There is not a large enough space available for that file\n");
+			//maybe apply compaction...
 		}else{
-			//if space exists...
-			
-			//fill it in and get the location
-			for(int i =0; i<size; i++){
-				WriteBit(1, memory, vcb->bitmap, (blockIndex + i));
+			//if space exists mark it as used
+			for(int i = blockIndex; i<size; i++){
+				WriteBit(i, 1);
 			}
 			//create a directory entry with fname, start block, size
 				//parse out file name and extension
@@ -145,58 +177,33 @@ void _Create(struct FileControlBlock *fcb, short int size, char *name, unsigned 
 	}
 	
 }
-//helper function to prevent redeclaring constant values
-void Create(struct FileControlBlock *fcb, short int size, char *name);
-
 
 int main() {
-	//allocate 1MB of memory
-	unsigned char memory[1048576]; // each array index represents a byte
-	
-	//set variables to indicate data structure locations
-	//first data block (0-2047) is used as the volume control block
-	//4 bytes for an unsigned int for number of blocks - 512 [0]
-	//4 bytes for an unsigned int for the size of blocks - 2048 Bytes (array spaces) [4]
-	//4 bytes for an unsigned int for the free block count - 507 (first 5 blocks are meta) [8]
-	//64 bytes for the bit map because 512 blocks exist (512 - 1vcb - 4dir) = 64 [12]
-	struct VolumeControlBlock volumeControlBlock;
-	volumeControlBlock.numberOfBlocks = 0;
-	volumeControlBlock.sizeOfBlock = 4;
-	volumeControlBlock.freeBlockCount = 8;
-	volumeControlBlock.bitmap = 12;
-
-	//second-fifth data block (2048 - 10239) is reserved for the directory 
-		//Each entry includes filename, start block number, and file size (16 bytes)
-		//4 blocks are needed to store up to 507 file entries (1 block files)
-		
-		//name is a series of unsigned 9 char (1 byte ec.) and a 3 byte extension = 12 bytes
-		// 2 bytes for size (unsigned short int)
-		// 2 bytes for location (unsigned short int)	
-	const unsigned int DIRECTORY = 2048;
-	const unsigned int DIRECTORY_ENTRY_SIZE = 16;
 	
 	//initialize default values:
-	WriteUInt(memory, volumeControlBlock.numberOfBlocks, 512);
-	WriteUInt(memory, volumeControlBlock.sizeOfBlock, 2048);
-	WriteUInt(memory, volumeControlBlock.freeBlockCount, 507);
+	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT, 512);
+	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_SIZE, 2048);
+	WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, 507);
 	//Write the first 5 bits of the bitmap as in use
 	for(int i =0; i<5; i++){
-		WriteBit(1, memory, volumeControlBlock.bitmap, i);
+		WriteBit(i, 1);
 	}
 
-	unsigned int num = ReadUInt(memory, volumeControlBlock.numberOfBlocks);	
-	unsigned int size = ReadUInt(memory, volumeControlBlock.sizeOfBlock);	
-	unsigned int free = ReadUInt(memory, volumeControlBlock.freeBlockCount);	
+	unsigned int num = ReadUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT);	
+	unsigned int size = ReadUInt(VOLUME_CONTROL_BLOCK.BLOCK_SIZE);	
+	unsigned int free = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);	
 	
 	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n\n", num, size, free);
 	
-	//function to create a file
-	void Create(struct FileControlBlock *fcb, short int size, char *name){
-		_Create(fcb,size,name,memory,&volumeControlBlock,DIRECTORY);
-	}
 	//testing Create Function
 	struct FileControlBlock fcb;
-	Create(&fcb,10, "world.txt");//expect index at block 5, takes up 10 blocks, next guy at 15
+	Create(&fcb, 10, "world.txt");
+	
+	//testing string manip
+	char str[] = "world.cs";
+	
+	printf("Testing string: %s\n", str);
+	
 	
 	return 0;
 }
