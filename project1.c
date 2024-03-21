@@ -189,9 +189,49 @@ short int FindDirSpace(){
 
 //validates the file name and outputs the name and extension to the corresponding char arrays
 //return 0 if successful and -1 if error
-int ParseFileName(const char *string, char *name, char *extension){
+int ParseFileName(const char *str, char *name, char *extension){
+	char *dot = strchr(str, '.');
+	int length = strlen(str);
 	
+	//ensure extension is given
+	if(dot == NULL){
+		printf("Invalid file name. File name must include extension\n");
+		return -1;
+	}
 	
+	//validate input
+	//check for special characters
+	const char *illegalChars = "/\\:*?\"|";
+	for(int i = 0; i < length; i++){
+		if(strchr(illegalChars, str[i]) != NULL) {
+			printf("Invalid file name. File name cannot contain /\\:*?\"|");
+			return -1;
+		}
+	}
+	
+	//check for multiple dots
+	if(strchr(dot+1, '.') != NULL){
+		printf("Invalid file name. A file may have only 1 extension. Include a single \".\" character");
+		return -1;
+	}
+	
+	//validate lengths
+	if( strlen(dot + 1) > 3){
+		printf("Invalid file name. Extension is too long. Three characters max");
+		return -1;
+	}
+	
+	if((dot - str) > 7){
+		printf("File name is too long. Seven characters max");
+		return -1;
+	}
+
+	//copy file name into the name location
+	strncpy(name, str, (dot - str));
+	//copy the extension to the extension location
+	strcpy(extension, (dot + 1));
+	
+	return 0;
 } 
 
 //Add an entry to the file directory
@@ -287,8 +327,11 @@ int main() {
 	}
 	printf("\n");
 	
-	//check head and tail
-	printf("Head: %hd, Tail: %hd",ReadSInt(DIR_HEAD),ReadSInt(DIR_TAIL));
+	//test parsing a file name
+	char name[7];
+	char ext[3];
+	ParseFileName(str, name, ext);
+	printf("Name: %s, Ext: %s\n", name, ext);
 	
 	printf("\n");
 	return 0;
