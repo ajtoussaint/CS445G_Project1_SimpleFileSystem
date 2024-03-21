@@ -2,6 +2,8 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <unistd.h>
+//used for parsing file names
+#include <string.h>
 
 //allocate 1MB of memory
 unsigned char MEMORY[1048576]; // each array index represents a byte
@@ -26,7 +28,12 @@ const struct VolumeControlBlock VOLUME_CONTROL_BLOCK = {0, 4, 8, 12};
 const unsigned int BITMAP_NUM_BITS = 512;
 
 
-//second-fifth data block (2048 - 10239) is reserved for the directory 
+//second-fifth data block (2048 - 10239) is reserved for the directory
+	
+	//first 16 bytes (2048 - 2063) are used to store head and tail for linked list as short ints
+const unsigned int DIR_HEAD = 2058;
+const unsigned int DIR_TAIL = 2060;
+	 
 	//Each entry includes filename, start block number, and file size (16 bytes)
 	//4 blocks are needed to store up to 507 file entries (1 block files)
 	
@@ -34,8 +41,8 @@ const unsigned int BITMAP_NUM_BITS = 512;
 	// 2 bytes for size (short int)
 	// 2 bytes for location (short int)	
 	// 2 bytes for memory location of next entry in linked list (short int)
-const unsigned int DIR_START = 2048;
-const unsigned int DIR_SIZE = 8192;
+const unsigned int DIR_START = 2064;
+const unsigned int DIR_SIZE = 8176;
 const unsigned int DIR_ENTRY_END = 16;
 const unsigned int DIR_ENTRY_NAME = 0;
 const unsigned int DIR_ENTRY_EXT = 7;
@@ -168,6 +175,55 @@ int FreeSpaceAddress(int spaceSize){
 	return -1;
 }
 
+//find the first open space for a new entry in the directory
+//returns the index of the start of the space for the entry or -1 to indicate full directory
+short int FindDirSpace(){
+	for(short int i = DIR_START; i<(DIR_START + DIR_SIZE); i +=16 ){
+		if(MEMORY[i] == 0x00){
+			return i;
+		}
+	}
+	//if no space is available return -1
+	return -1;
+}
+
+//validates the file name and outputs the name and extension to the corresponding char arrays
+//return 0 if successful and -1 if error
+int ParseFileName(const char *string, char *name, char *extension){
+	
+	
+} 
+
+//Add an entry to the file directory
+void AddDirEntry(const char *fname, int fsize, int flocation){
+	short int entryLoc = FindDirSpace();
+	if(entryLoc < 0){
+		printf("Directory full. Could not add file");
+		return;
+	}
+	//input the file details at the entry location
+	
+	//write name
+	//write extension
+	//write size in blocks
+	WriteSInt((entryLoc + DIR_ENTRY_SIZE),fsize); 
+	//write storage location
+	WriteSInt((entryLoc + DIR_ENTRY_LOC), flocation);
+	
+	//if this is the first entry initialize head and tail
+	if(ReadSInt(DIR_HEAD) == 0){
+		WriteSInt(DIR_HEAD, entryLoc);
+		WriteSInt(DIR_TAIL, entryLoc);
+	}else{
+		//otherwise
+		//update the previous tail to point to the new entry
+		WriteSInt(ReadSInt(DIR_TAIL) + DIR_ENTRY_NEXT, entryLoc);
+		//update the tail to be the new entry
+		WriteSInt(DIR_TAIL, entryLoc);
+	}
+	
+}
+
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
 void Create(struct FileControlBlock *fcb, short int size, char *name){
 	//print inputs to test validity - remove
@@ -196,10 +252,8 @@ void Create(struct FileControlBlock *fcb, short int size, char *name){
 			//update vcb free block count
 			//run the open function to give the fcb values
 		}
-		
-		
+			
 	}
-	
 }
 
 int main() {
@@ -231,7 +285,10 @@ int main() {
 	for(int i = 0; i < 32; i++){
 		printf("%u",ReadBit(i));
 	}
+	printf("\n");
 	
+	//check head and tail
+	printf("Head: %hd, Tail: %hd",ReadSInt(DIR_HEAD),ReadSInt(DIR_TAIL));
 	
 	printf("\n");
 	return 0;
