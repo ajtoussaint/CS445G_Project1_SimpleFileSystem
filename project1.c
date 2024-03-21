@@ -31,10 +31,11 @@ const unsigned int BITMAP_NUM_BITS = 512;
 	//4 blocks are needed to store up to 507 file entries (1 block files)
 	
 	//name is a series of 7 unsigned  char (1 byte ec.) and a 3 byte extension = 10 bytes
-	// 2 bytes for size (unsigned short int)
-	// 2 bytes for location (unsigned short int)	
-	// 2 bytes for pointer to next entry in linked list
+	// 2 bytes for size (short int)
+	// 2 bytes for location (short int)	
+	// 2 bytes for memory location of next entry in linked list (short int)
 const unsigned int DIR_START = 2048;
+const unsigned int DIR_SIZE = 8192;
 const unsigned int DIR_ENTRY_END = 16;
 const unsigned int DIR_ENTRY_NAME = 0;
 const unsigned int DIR_ENTRY_EXT = 7;
@@ -50,6 +51,12 @@ struct FileControlBlock{
 
 
 unsigned int ReadUInt(int index){
+	//ensure index in memory is a valid unsigned int location
+	
+	if(index > 12 || (index % 4) > 0){
+		printf("Invalid unsigned integer read\n");
+		return 0;
+	}
 	
 	unsigned int value = 0;
 	
@@ -65,6 +72,12 @@ unsigned int ReadUInt(int index){
 }
 
 void WriteUInt(int index, unsigned int value){
+	//ensure index in memory is a valid unsigned int location
+	if(index > 12 || (index % 4) > 0){
+		printf("Invalid unsigned integer write\n");
+		return;
+	}
+	
 	//write 4 bytes of value
 	for(int i=0; i<4; i++){
 		MEMORY[i + index] = (value >> ((3-i)*8)) & 0xFF;
@@ -72,6 +85,12 @@ void WriteUInt(int index, unsigned int value){
 }
 
 short int ReadSInt(int index){
+	//ensure index in memory is a valid short int location
+	if( index < 2048 || (index % 16) < 10 || (index % 2) > 0){
+		printf("Invalid short integer read\n");
+		return 0;
+	}
+
 	short int value = 0;
 	unsigned char *arr = MEMORY + index;
 	for(int i = 0; i < 2; i++){
@@ -82,6 +101,11 @@ short int ReadSInt(int index){
 }
 
 void WriteSInt(int index, short int value){
+	//ensure index in memory is a valid short int location
+	if( index < 2048 || (index % 16) < 10 || (index % 2) > 0){
+		printf("Invalid short integer write\n");
+		return;
+	}
 	for(int i=0; i<2; i++){
 		MEMORY[i + index] = (value >> ((1-i)*8)) & 0xFF;
 	}
