@@ -162,7 +162,7 @@ void Create(struct FileControlBlock *fcb, short int size, char *name){
 			//maybe apply compaction...
 		}else{
 			//if space exists mark it as used
-			for(int i = blockIndex; i<size; i++){
+			for(int i = blockIndex; i < (size + blockIndex); i++){
 				WriteBit(i, 1);
 			}
 			//create a directory entry with fname, start block, size
@@ -197,14 +197,19 @@ int main() {
 	
 	//testing Create Function
 	struct FileControlBlock fcb;
-	Create(&fcb, 10, "world.txt");
+	Create(&fcb, 7, "world.txt");
 	
 	//testing string manip
 	char str[] = "world.cs";
 	
 	printf("Testing string: %s\n", str);
 	
+	for(int i = 0; i < 32; i++){
+		printf("%u",ReadBit(i));
+	}
 	
+	
+	printf("\n");
 	return 0;
 }
 
