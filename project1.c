@@ -77,6 +77,7 @@ typedef struct {
 
 GlobalTableEntry GLOBAL_FILE_TABLE[MAX_GLOBAL_FILES];
 
+//ads an entry to the global file table and returns the index of the entry or -1 in case of failure
 int AppendToGlobalTable(GlobalTableEntry gte){
 	//TODO: ensure no duplicate entries
 	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
@@ -87,7 +88,7 @@ int AppendToGlobalTable(GlobalTableEntry gte){
 			strcpy(entry->fname, gte.fname);
 			CopyFCB(&(entry->fcb), &gte.fcb);
 			entry->instances = gte.instances;
-			return 0;
+			return i;
 		}
 	}
 	printf("no space available in global file table");
@@ -130,6 +131,21 @@ struct LocalTableEntry{
 	char fname[8];
 	short int handle; //index in Global table
 };
+
+int AppendToLocalTable(struct LocalTableEntry *table, struct LocalTableEntry lte){
+	//TODO: ensure no duplicate
+	for(int i = 0; i < MAX_LOCAL_FILES; i++){
+		struct LocalTableEntry *entry = &table[i];
+		if(entry -> fname[0] == '\0'){
+			printf("Inserting at local table [%d]\n", i);
+			strcpy(entry->fname, lte.fname);
+			entry->handle = lte.handle;
+			return i;
+		}
+	}
+	printf("no space available in local file table\n");
+	return -1;
+}
 
 unsigned int ReadUInt(int index){
 	//ensure index in memory is a valid unsigned int location
@@ -549,17 +565,15 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 	}
 	
 	struct FileControlBlock fcb;
-	int handel = -1;
+	int handle = -1;
 
 	//Search the GFT for an instance of the file
-	handel = FindInGlobalTable(fname);
-	if(handel > 0){
+	handle = FindInGlobalTable(fname);
+	if(handle > 0){
 		//get fcb from global table
-		CopyFCB(&fcb, &GLOBAL_FILE_TABLE[handel].fcb);
-		//fcb.fileSizeBlocks = GLOBAL_FILE_TABLE[handel].fcb.fileSizeBlocks;
-		//fcb.firstBlockAddress = GLOBAL_FILE_TABLE[handel].fcb.firstBlockAddress;
+		CopyFCB(&fcb, &GLOBAL_FILE_TABLE[handle].fcb);
 		//increment instances in GFT
-		GLOBAL_FILE_TABLE[handel].instances++;
+		GLOBAL_FILE_TABLE[handle].instances++;
 	}else{
 		//else create a new FCB for the file based on directory info
 		int dirEntry = FindDirEntry(fname);
@@ -569,19 +583,20 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 		GlobalTableEntry globalEntry;
 		strcpy(globalEntry.fname, fname);
 		CopyFCB(&globalEntry.fcb, &fcb);
-		//globalEntry.fcb = fcb;
 		globalEntry.instances = 1;
+		handle = AppendToGlobalTable(globalEntry);
+		//check for failed append
+		if(handle < 0){
+			printf("Failed to append entry to global table\n");
+			return -1;
+		}
 	}
-	
-		
-		
-		
-		
+	//at this point handle is the correct index and the global table has been successfully updated
 	
 	//update the local process table with a new entry
 	
 	//return the handle
-	
+	return handle;
 }
 
 int main() {
@@ -613,24 +628,19 @@ int main() {
 	
 	PrintDir();
 	
-	//testing global file table
-	printf("\n\n");
-	GlobalTableEntry x, y;
-	strcpy(x.fname, "world.txt");
-	x.fcb.fileSizeBlocks = 77;
-	x.fcb.firstBlockIndex = 77;
-	x.instances = 1;
-	strcpy(y.fname, "zoom.c");
-	y.fcb.fileSizeBlocks = 1;
-	y.fcb.firstBlockIndex = 1;
-	y.instances = 1;
-	FindInGlobalTable("world.txt");
-	AppendToGlobalTable(x);
-	FindInGlobalTable("world.txt");
-	printf("FCB VALUE: %d\n", GLOBAL_FILE_TABLE[0].fcb.fileSizeBlocks);
-	AppendToGlobalTable(y);
-	RemoveFromGlobalTable("world.txt");
-	AppendToGlobalTable(y);
+	//testing appending to local table
+	struct LocalTableEntry localTable[MAX_LOCAL_FILES];
+	struct LocalTableEntry x,y;
+	strcpy(x.fname,"world.txt");
+	x.handle = 9;
+	
+	strcpy(y.fname, "note.cs");
+	y.handle = 100;
+	
+	AppendToLocalTable(localTable, x);
+	printf("LT0: %d (expect 9)\n", localTable[0].handle);
+	AppendToLocalTable(localTable, y);
+	printf("LT1: %d (expect 100)\n", localTable[1].handle);
 	
 	printf("\n");
 	return 0;
