@@ -251,6 +251,9 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 		printf("Directory full. Could not add file");
 		return -1;
 	}
+	
+	//TODO: ensure duplicate file doesn't exist
+	
 	//input the file details at the entry location
 
 	//parsing name and extension from fname
@@ -298,32 +301,59 @@ void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short in
 		for(int i = 0; i < MAX_NAME_LEN; i++){
 			name[i] = MEMORY[entryLoc + DIR_ENTRY_NAME + i];
 		}
+		name[MAX_NAME_LEN] = '\0';
 		for(int i = 0; i < MAX_EXT_LEN; i++){
 			ext[i] = MEMORY[entryLoc + DIR_ENTRY_EXT + i];
 		}
+		ext[MAX_EXT_LEN] = '\0';
 		*size = ReadSInt(entryLoc + DIR_ENTRY_SIZE);
 		*loc = ReadSInt(entryLoc + DIR_ENTRY_LOC);
 		*next = ReadSInt(entryLoc + DIR_ENTRY_NEXT);
-		
-		//printf("Get sees ext as: %s\n", ext);
-		
 		return;
 		
 	}
 
 //prints a directory entry at a given location. Returns the location of the next entry or 0 if last entry
 short int PrintDirEntry(int entryLoc){
-	unsigned char name[8];
-	unsigned char ext[4];
+	unsigned char name[MAX_NAME_LEN + 1];
+	unsigned char ext[MAX_EXT_LEN + 1];
 	short int size;
 	short int loc;
 	short int next;
-	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);
-	
-	//printf("print sees ext as: %s\n", ext);
-	
+	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);	
 	printf("%-15s %-15s %-15hd %-15hd %-15hd\n", name, ext, size, loc, next);
 	return next;
+}
+
+//returns the memory location of a files directory entry based on name or -1 if it is not found/invalid name
+int FindDirEntry(char *fname){
+	//parse and validate fname
+	char name[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[4] = {0x00, 0x00, 0x00, 0x00};
+	int valid = ParseFileName(fname, name, ext);
+	if(valid < 0){
+		printf("File name is not valid");
+		return -1;
+	}
+	
+	//iterate directory linked list to find the file
+	int entry = DIR_START;
+	while(entry != 0){
+		unsigned char entryName[MAX_NAME_LEN + 1];
+		unsigned char entryExt[MAX_EXT_LEN + 1];
+		short int size;
+		short int loc;
+		short int next;
+		GetDirEntry(entry, name, ext, &size, &loc, &next);
+		if(memcmp(entryName, name, MAX_NAME_LEN + 1) == 0 && memcmp(entryExt, ext, MAX_EXT_LEN + 1) == 0){
+			//if the entry matches the search criteria
+			printf("Found file at location: %d", entry);
+			return entry;
+		}
+		entry = next;
+	}
+	//if file is not found return -1
+	return -1;
 }
 
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
@@ -388,7 +418,7 @@ int main() {
 	AddDirEntry("world.cs", 10, 5);
 	AddDirEntry("note.txt", 1, 16);
 	AddDirEntry("vibe.c", 10, 17);
-	AddDirEntry("trust.nve", 10, 17);
+	AddDirEntry("trust.nve", 10, 27);
 
 	printf("%-15s %-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address", "Next");
 	printf("---------------------------------------------------------------------\n");//perfect size
@@ -397,6 +427,9 @@ int main() {
 	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*1);
 	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*2);
 	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*3);
+	
+	int location = FindDirEntry("vibe.c");
+	printf("Found file at: %d\n", location);
 	
 	printf("\n");
 	printf("Hex read: \n");
