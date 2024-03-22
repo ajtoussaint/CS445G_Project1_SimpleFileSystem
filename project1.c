@@ -295,15 +295,17 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 }
 //helper function for printing a directory entry
 void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short int *size, short int *loc, short int *next){
-		for(int i = 0; i < 7; i++){
+		for(int i = 0; i < MAX_NAME_LEN; i++){
 			name[i] = MEMORY[entryLoc + DIR_ENTRY_NAME + i];
 		}
-		for(int i = 0; i < 3; i++){
+		for(int i = 0; i < MAX_EXT_LEN; i++){
 			ext[i] = MEMORY[entryLoc + DIR_ENTRY_EXT + i];
 		}
 		*size = ReadSInt(entryLoc + DIR_ENTRY_SIZE);
 		*loc = ReadSInt(entryLoc + DIR_ENTRY_LOC);
 		*next = ReadSInt(entryLoc + DIR_ENTRY_NEXT);
+		
+		//printf("Get sees ext as: %s\n", ext);
 		
 		return;
 		
@@ -311,12 +313,15 @@ void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short in
 
 //prints a directory entry at a given location. Returns the location of the next entry or 0 if last entry
 short int PrintDirEntry(int entryLoc){
-	unsigned char name[7];
-	unsigned char ext[3];
+	unsigned char name[8];
+	unsigned char ext[4];
 	short int size;
 	short int loc;
 	short int next;
 	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);
+	
+	//printf("print sees ext as: %s\n", ext);
+	
 	printf("%-15s %-15s %-15hd %-15hd %-15hd\n", name, ext, size, loc, next);
 	return next;
 }
