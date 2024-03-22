@@ -51,15 +51,80 @@ const unsigned int DIR_ENTRY_LOC = 12;
 const unsigned int DIR_ENTRY_NEXT = 14;
 
 //userful constants
-const short int MAX_NAME_LEN = 7;
-const short int MAX_EXT_LEN = 3;
+#define MAX_NAME_LEN 7
+#define MAX_EXT_LEN 3
 
+//File control structures
 struct FileControlBlock{
 	int fileSizeBlocks;
 	int firstBlockIndex;
 };
 
+#define MAX_GLOBAL_FILES 64
+#define MAX_LOCAL_FILES 8
 
+typedef struct {
+	char fname[12];
+	struct FileControlBlock fcb;
+	short int instances;
+}GlobalTableEntry;
+
+
+GlobalTableEntry GLOBAL_FILE_TABLE[MAX_GLOBAL_FILES];
+
+int AppendToGlobalTable(GlobalTableEntry gte){
+	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
+		//check if the space is available
+		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
+		if(entry->fname[0] == '\0'){
+			printf("GFT[%d] is free\n", i);//debug
+			strcpy(entry->fname, gte.fname);
+			entry->fcb.fileSizeBlocks = gte.fcb.fileSizeBlocks;
+			entry->fcb.firstBlockIndex = gte.fcb.firstBlockIndex;
+			entry->instances = gte.instances;
+			return 0;
+		}
+	}
+	printf("no space available in global file table");
+	return -1;
+}
+
+//returns the index of a file's position in the global file table or -1 if not found
+int FindInGlobalTable(char *fname){
+	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
+		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
+		if(strcmp(entry->fname, fname) == 0){
+			//if the entry is found set its values to the default
+			printf("Found entry at GFT[%d]\n", i);//debug
+			return i;
+		}
+	}
+	//if the loop is completed the entry was not found
+	printf("file was not found in global table\n");//debug
+	return -1;
+}
+
+int RemoveFromGlobalTable(char *fname){
+	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
+		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
+		if(strcmp(entry->fname, fname) == 0){
+			//if the entry is found set its values to the default
+			printf("Found entry to remove at GFT[%d]\n", i);//debug
+			strcpy(entry->fname, "\0");
+			entry->fcb.fileSizeBlocks = 0;
+			entry->fcb.firstBlockIndex = 0;
+			entry->instances = 0;
+			return 0;
+		}
+	}
+	//if the loop is completed the entry was not found
+	return -1;
+}
+
+struct LocalTableEntry{
+	char fname[8];
+	short int handle; //index in Global table
+};
 
 unsigned int ReadUInt(int index){
 	//ensure index in memory is a valid unsigned int location
@@ -437,12 +502,12 @@ void PrintDir(){
 }
 
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
-void Create(struct FileControlBlock *fcb, short int size, char *name){
-	//print inputs to test validity - remove
-	printf("I'm getting:\nsize:%u\nname:%s\nvcb fbc:%u\ndir:%u\n", size, name, VOLUME_CONTROL_BLOCK.FREE_BLOCKS, DIR_START);
+void Create(struct FileControlBlock *fcb, char *name, short int size){
+	//TODO: ensure file does not already exist
 	
 	//ensure the file size is at least less than the free block count
-	if(size > ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS)){
+	int freeBlocks = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
+	if(size > freeBlocks){
 		printf("Could not Create File. Desired File Size is too big!\n");
 	}else{
 		//search the bitmap for a free space of corresponding size
@@ -451,21 +516,70 @@ void Create(struct FileControlBlock *fcb, short int size, char *name){
 		if(blockIndex < 0){
 			//if no space exists error (for now)
 			printf("There is not a large enough space available for that file\n");
-			//maybe apply compaction...
+			//TODO: maybe apply compaction...
 		}else{
 			//if space exists mark it as used
 			for(int i = blockIndex; i < (size + blockIndex); i++){
 				WriteBit(i, 1);
 			}
 			//create a directory entry with fname, start block, size
-				//parse out file name and extension
-				//start block is blockIndex and size is given
-				//find the next open directory entry (see notecard)
+			AddDirEntry(name, size, blockIndex);
 			//update vcb free block count
+			WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, (freeBlocks - size));
 			//run the open function to give the fcb values
 		}
 			
 	}
+}
+
+//updates global and local process tables accordingly, returns index of file in global table
+//returns -1 in event of error
+int Open(char *fname, struct LocalTableEntry *localOpenFiles){
+	//search local process table for instance, if found -> error
+	for(int i = 0; i < MAX_LOCAL_FILES; i++){
+		if(localOpenFiles[i].fname == fname){
+			printf("Cannot open a file that is already open");
+			return -1;
+		}
+	}
+	
+	struct FileControlBlock fcb;
+	int handel = -1;
+
+	//Search the GFT for an instance of the file
+	for(int i =0; i < MAX_GLOBAL_FILES; i++){
+		if(GLOBAL_FILE_TABLE[i].fname == fname){
+			//if found get the index as a flag
+			handel = i;
+			break;
+		}
+	}
+	if(handel > 0){
+		//get fcb from global table
+		fcb = GLOBAL_FILE_TABLE[handel].fcb;
+		//increment instances in GFT
+		GLOBAL_FILE_TABLE[handel].instances++;
+	}else{
+		//else create a new FCB for the file based on directory info
+		int dirEntry = FindDirEntry(fname);
+		fcb.fileSizeBlocks = ReadSInt(dirEntry + DIR_ENTRY_SIZE);
+		fcb.firstBlockIndex = ReadSInt(dirEntry + DIR_ENTRY_LOC);
+		//add the entry to the GFT and get the index
+		GlobalTableEntry globalEntry;
+		strcpy(globalEntry.fname, fname);
+		globalEntry.fcb = fcb;
+		globalEntry.instances = 1;
+	}
+	
+		
+		
+		
+		
+	
+	//update the local process table with a new entry
+	
+	//return the handle
+	
 }
 
 int main() {
@@ -487,12 +601,35 @@ int main() {
 	
 	//testing Create Function
 	struct FileControlBlock fcb;
-	Create(&fcb, 7, "world.txt");
+	Create(&fcb, "world.txt", 20);
 	
+	//shows bitmap
 	for(int i = 0; i < 32; i++){
 		printf("%u",ReadBit(i));
 	}
-	printf("\n");
+	printf("\n\n");
+	
+	PrintDir();
+	
+	//testing global file table
+	printf("\n\n");
+	GlobalTableEntry x, y;
+	strcpy(x.fname, "world.txt");
+	x.fcb.fileSizeBlocks = 77;
+	x.fcb.firstBlockIndex = 77;
+	x.instances = 1;
+	strcpy(y.fname, "zoom.c");
+	y.fcb.fileSizeBlocks = 1;
+	y.fcb.firstBlockIndex = 1;
+	y.instances = 1;
+	FindInGlobalTable("world.txt");
+	AppendToGlobalTable(x);
+	FindInGlobalTable("world.txt");
+	AppendToGlobalTable(y);
+	RemoveFromGlobalTable("world.txt");
+	AppendToGlobalTable(y);
+	
+
 	
 	
 	printf("\n");
