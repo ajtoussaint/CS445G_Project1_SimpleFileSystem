@@ -50,6 +50,10 @@ const unsigned int DIR_ENTRY_SIZE = 10;
 const unsigned int DIR_ENTRY_LOC = 12;
 const unsigned int DIR_ENTRY_NEXT = 14;
 
+//userful constants
+const short int MAX_NAME_LEN = 7;
+const short int MAX_EXT_LEN = 3;
+
 struct FileControlBlock{
 	int fileSizeBlocks;
 	int firstBlockIndex;
@@ -180,6 +184,7 @@ int FreeSpaceAddress(int spaceSize){
 short int FindDirSpace(){
 	for(short int i = DIR_START; i<(DIR_START + DIR_SIZE); i +=16 ){
 		if(MEMORY[i] == 0x00){
+			printf("Found space in directory at: %d\n", i);
 			return i;
 		}
 	}
@@ -192,7 +197,7 @@ short int FindDirSpace(){
 int ParseFileName(const char *str, char *name, char *extension){
 	char *dot = strchr(str, '.');
 	int length = strlen(str);
-	
+	printf("Parsing File: %s\n", str);
 	//ensure extension is given
 	if(dot == NULL){
 		printf("Invalid file name. File name must include extension\n");
@@ -225,40 +230,48 @@ int ParseFileName(const char *str, char *name, char *extension){
 		printf("File name is too long. Seven characters max");
 		return -1;
 	}
+	
+	
+	
 
 	//copy file name into the name location
 	strncpy(name, str, (dot - str));
+	name[dot - str] = '\0';
+	
 	//copy the extension to the extension location
 	strcpy(extension, (dot + 1));
-	
+	extension[MAX_EXT_LEN] = '\0';
 	return 0;
 } 
 
 //Add an entry to the file directory
-void AddDirEntry(const char *fname, int fsize, int flocation){
+int AddDirEntry(const char *fname, int fsize, int flocation){
 	short int entryLoc = FindDirSpace();
 	if(entryLoc < 0){
 		printf("Directory full. Could not add file");
-		return;
+		return -1;
 	}
 	//input the file details at the entry location
-	
+
 	//parsing name and extension from fname
-	char name[7];
-	char ext[3];
+	char name[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[4] = {0x00, 0x00, 0x00, 0x00};
 	
 	int valid = ParseFileName(fname, name, ext);
+
 	if(valid < 0){
-		printf("Could not add directory entry: Invalid file name.");
-		return;
+		printf("Could not add directory entry: Invalid file name.\n");
+		return -1;
 	}
 		
 	//write name
-	for(int i = 0; i < 7; i++){
+	printf("Writing name: %s\nto location: %d\n", name, (entryLoc + DIR_ENTRY_NAME));
+	for(int i = 0; i < MAX_NAME_LEN; i++){
 		MEMORY[entryLoc + DIR_ENTRY_NAME + i] = (unsigned char)name[i];
 	}
 	//write extension
-	for(int i = 0; i < 3; i++){
+	printf("Writing ext: %s\nto location: %d\n", ext, (entryLoc + DIR_ENTRY_EXT));
+	for(int i = 0; i < MAX_EXT_LEN; i++){
 		MEMORY[entryLoc + DIR_ENTRY_EXT + i] = (unsigned char)ext[i];
 	} 
 	//write size in blocks
@@ -278,6 +291,34 @@ void AddDirEntry(const char *fname, int fsize, int flocation){
 		WriteSInt(DIR_TAIL, entryLoc);
 	}
 	
+	return 0;
+}
+//helper function for printing a directory entry
+void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short int *size, short int *loc, short int *next){
+		for(int i = 0; i < 7; i++){
+			name[i] = MEMORY[entryLoc + DIR_ENTRY_NAME + i];
+		}
+		for(int i = 0; i < 3; i++){
+			ext[i] = MEMORY[entryLoc + DIR_ENTRY_EXT + i];
+		}
+		*size = ReadSInt(entryLoc + DIR_ENTRY_SIZE);
+		*loc = ReadSInt(entryLoc + DIR_ENTRY_LOC);
+		*next = ReadSInt(entryLoc + DIR_ENTRY_NEXT);
+		
+		return;
+		
+	}
+
+//prints a directory entry at a given location. Returns the location of the next entry or 0 if last entry
+short int PrintDirEntry(int entryLoc){
+	unsigned char name[7];
+	unsigned char ext[3];
+	short int size;
+	short int loc;
+	short int next;
+	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);
+	printf("%-15s %-15s %-15hd %-15hd %-15hd\n", name, ext, size, loc, next);
+	return next;
 }
 
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
@@ -339,45 +380,30 @@ int main() {
 	printf("\n");
 	
 	//testing creating a directory entry
-	printf("Initial: \n");
-	short int head = ReadSInt(DIR_HEAD);
-	short int tail = ReadSInt(DIR_TAIL);
-	printf("Head: %hd, Tail: %hd (expected 0)\n", head, tail);
-	printf("entry hex: ");
-	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
-		printf("%02X ", MEMORY[i]);
-	}
-	printf("\n");
-	printf("entry char: ");
-	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
-		printf("%c", MEMORY[i]);
-	}
-	printf("\n");
-	short int sizen = ReadSInt(DIR_START + DIR_ENTRY_SIZE);
-	short int loc = ReadSInt(DIR_START + DIR_ENTRY_LOC);
-	short int next = ReadSInt(DIR_START + DIR_ENTRY_NEXT);
-	printf("size: %hd, loc: %hd, next: %hd\n", sizen, loc, next);
-	
 	AddDirEntry("world.cs", 10, 5);
+	AddDirEntry("note.txt", 1, 16);
+	AddDirEntry("vibe.c", 10, 17);
+	AddDirEntry("trust.nve", 10, 17);
+
+	printf("%-15s %-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address", "Next");
+	printf("---------------------------------------------------------------------\n");//perfect size
 	
-	printf("\n\nFinal: \n");
-	head = ReadSInt(DIR_HEAD);
-	tail = ReadSInt(DIR_TAIL);
-	sizen = ReadSInt(DIR_START + DIR_ENTRY_SIZE);
-	loc = ReadSInt(DIR_START + DIR_ENTRY_LOC);
-	next = ReadSInt(DIR_START + DIR_ENTRY_NEXT);
-	printf("Head: %hd, Tail: %hd (expected 0)\n", head, tail);
-	printf("entry hex: ");
-	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
+	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*0);
+	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*1);
+	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*2);
+	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*3);
+	
+	printf("\n");
+	printf("Hex read: \n");
+	for(int i = DIR_START; i < (DIR_START + 64); i++){
+		if( i % 16 == 0){
+			printf("\n");
+			printf("%d: ", i);
+		}
 		printf("%02X ", MEMORY[i]);
+		
 	}
-	printf("\n");
-	printf("entry char: ");
-	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
-		printf("%c", MEMORY[i]);
-	}
-	printf("\n");
-	printf("size: %hd, loc: %hd, next: %hd\n", sizen, loc, next);
+
 	
 	printf("\n");
 	return 0;
