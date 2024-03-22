@@ -60,6 +60,11 @@ struct FileControlBlock{
 	int firstBlockIndex;
 };
 
+void CopyFCB(struct FileControlBlock *dest, struct FileControlBlock *src){
+	dest->fileSizeBlocks = src->fileSizeBlocks;
+	dest->firstBlockIndex = src->firstBlockIndex;
+}
+
 #define MAX_GLOBAL_FILES 64
 #define MAX_LOCAL_FILES 8
 
@@ -73,14 +78,14 @@ typedef struct {
 GlobalTableEntry GLOBAL_FILE_TABLE[MAX_GLOBAL_FILES];
 
 int AppendToGlobalTable(GlobalTableEntry gte){
+	//TODO: ensure no duplicate entries
 	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
 		//check if the space is available
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
 		if(entry->fname[0] == '\0'){
 			printf("GFT[%d] is free\n", i);//debug
 			strcpy(entry->fname, gte.fname);
-			entry->fcb.fileSizeBlocks = gte.fcb.fileSizeBlocks;
-			entry->fcb.firstBlockIndex = gte.fcb.firstBlockIndex;
+			CopyFCB(&(entry->fcb), &gte.fcb);
 			entry->instances = gte.instances;
 			return 0;
 		}
@@ -547,16 +552,12 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 	int handel = -1;
 
 	//Search the GFT for an instance of the file
-	for(int i =0; i < MAX_GLOBAL_FILES; i++){
-		if(GLOBAL_FILE_TABLE[i].fname == fname){
-			//if found get the index as a flag
-			handel = i;
-			break;
-		}
-	}
+	handel = FindInGlobalTable(fname);
 	if(handel > 0){
 		//get fcb from global table
-		fcb = GLOBAL_FILE_TABLE[handel].fcb;
+		CopyFCB(&fcb, &GLOBAL_FILE_TABLE[handel].fcb);
+		//fcb.fileSizeBlocks = GLOBAL_FILE_TABLE[handel].fcb.fileSizeBlocks;
+		//fcb.firstBlockAddress = GLOBAL_FILE_TABLE[handel].fcb.firstBlockAddress;
 		//increment instances in GFT
 		GLOBAL_FILE_TABLE[handel].instances++;
 	}else{
@@ -567,7 +568,8 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 		//add the entry to the GFT and get the index
 		GlobalTableEntry globalEntry;
 		strcpy(globalEntry.fname, fname);
-		globalEntry.fcb = fcb;
+		CopyFCB(&globalEntry.fcb, &fcb);
+		//globalEntry.fcb = fcb;
 		globalEntry.instances = 1;
 	}
 	
@@ -625,12 +627,10 @@ int main() {
 	FindInGlobalTable("world.txt");
 	AppendToGlobalTable(x);
 	FindInGlobalTable("world.txt");
+	printf("FCB VALUE: %d\n", GLOBAL_FILE_TABLE[0].fcb.fileSizeBlocks);
 	AppendToGlobalTable(y);
 	RemoveFromGlobalTable("world.txt");
 	AppendToGlobalTable(y);
-	
-
-	
 	
 	printf("\n");
 	return 0;
@@ -770,6 +770,23 @@ int main() {
 		
 	}*/
 
+//testing global file table
+	/*printf("\n\n");
+	GlobalTableEntry x, y;
+	strcpy(x.fname, "world.txt");
+	x.fcb.fileSizeBlocks = 77;
+	x.fcb.firstBlockIndex = 77;
+	x.instances = 1;
+	strcpy(y.fname, "zoom.c");
+	y.fcb.fileSizeBlocks = 1;
+	y.fcb.firstBlockIndex = 1;
+	y.instances = 1;
+	FindInGlobalTable("world.txt");
+	AppendToGlobalTable(x);
+	FindInGlobalTable("world.txt");
+	AppendToGlobalTable(y);
+	RemoveFromGlobalTable("world.txt");
+	AppendToGlobalTable(y);*/
 
 
 
