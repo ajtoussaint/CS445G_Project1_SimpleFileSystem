@@ -317,21 +317,45 @@ int main() {
 	struct FileControlBlock fcb;
 	Create(&fcb, 7, "world.txt");
 	
-	//testing string manip
-	char str[] = "world.cs";
-	
-	printf("Testing string: %s\n", str);
-	
 	for(int i = 0; i < 32; i++){
 		printf("%u",ReadBit(i));
 	}
 	printf("\n");
 	
 	//test parsing a file name
+	unsigned char array[10];
 	char name[7];
 	char ext[3];
-	ParseFileName(str, name, ext);
+	
+	//initial array
+	printf("Initial: ");
+	for(int i = 0; i<10; i++){
+		printf("%02X ", array[i]);
+	}
+	printf("\n");
+	
+	ParseFileName("world.cs", name, ext);
 	printf("Name: %s, Ext: %s\n", name, ext);
+	
+	//copy in name
+	for(int i = 0; i<7; i++){
+		array[i] = (unsigned char)name[i];
+	}
+	
+	for(int i = 0; i < 3; i++){
+		array[i+7] = (unsigned char)ext[i];
+	}
+	
+	//final array
+	printf("Final: ");
+	for(int i = 0; i<10; i++){
+		printf("%02X ", array[i]);
+	}
+	printf("\n");
+	for(int i = 0; i<10; i++){
+		printf("%c", array[i]);
+	}
+	printf("\n");
 	
 	printf("\n");
 	return 0;
