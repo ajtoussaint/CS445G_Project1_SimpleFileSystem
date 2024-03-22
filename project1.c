@@ -91,7 +91,7 @@ int AppendToGlobalTable(GlobalTableEntry gte){
 			return i;
 		}
 	}
-	printf("no space available in global file table");
+	printf("no space available in global file table\n");
 	return -1;
 }
 
@@ -128,7 +128,7 @@ int RemoveFromGlobalTable(char *fname){
 }
 
 struct LocalTableEntry{
-	char fname[8];
+	char fname[12];
 	short int handle; //index in Global table
 };
 
@@ -137,13 +137,40 @@ int AppendToLocalTable(struct LocalTableEntry *table, struct LocalTableEntry lte
 	for(int i = 0; i < MAX_LOCAL_FILES; i++){
 		struct LocalTableEntry *entry = &table[i];
 		if(entry -> fname[0] == '\0'){
-			printf("Inserting at local table [%d]\n", i);
+			printf("Inserting at local table [%d]\n", i);//debug
 			strcpy(entry->fname, lte.fname);
 			entry->handle = lte.handle;
 			return i;
 		}
 	}
-	printf("no space available in local file table\n");
+	printf("no space available in local file table\n");//debug
+	return -1;
+}
+
+int FindInLocalTable(struct LocalTableEntry *table, char *fname){
+	for(int i = 0; i < MAX_LOCAL_FILES; i++){
+		struct LocalTableEntry *entry = &table[i];
+		if(strcmp(entry->fname, fname) == 0){
+			printf("Found entry at LFT[%d]\n", i);//debug
+			return i;
+		}
+	}
+	printf("File was not found in local table\n");//debug
+	return -1;
+}
+
+int RemoveFromLocalTable(struct LocalTableEntry *table, char *fname){
+	for(int i = 0; i < MAX_LOCAL_FILES; i++){
+		struct LocalTableEntry *entry = &table[i];
+		printf("Checking name: %s\n", entry->fname);
+		if(strcmp(entry->fname, fname) == 0){
+			printf("Found entry to remove at LFT[%d]\n", i);//debug
+			strcpy(entry->fname, "\0");
+			entry->handle = 0;
+			return 0;
+		}
+	}
+	printf("File to remove was not found in local table\n");//debug
 	return -1;
 }
 
@@ -638,9 +665,15 @@ int main() {
 	y.handle = 100;
 	
 	AppendToLocalTable(localTable, x);
-	printf("LT0: %d (expect 9)\n", localTable[0].handle);
+	printf("LT0: %s (expect world.txt)\n", localTable[0].fname);
+	RemoveFromLocalTable(localTable, "world.txt");
+	printf("LT0: %s (expect nothing)\n", localTable[0].fname);
+	FindInLocalTable(localTable, "world.txt");//expect not found
 	AppendToLocalTable(localTable, y);
-	printf("LT1: %d (expect 100)\n", localTable[1].handle);
+	printf("LT0: %s (expect note.cs)\n", localTable[0].fname);
+	AppendToLocalTable(localTable, x);
+	printf("LT1: %s (expect world.txt)\n", localTable[1].fname);
+	FindInLocalTable(localTable, "world.txt");//expect found
 	
 	printf("\n");
 	return 0;
