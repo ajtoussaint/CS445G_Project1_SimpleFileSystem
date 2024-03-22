@@ -184,7 +184,7 @@ int FreeSpaceAddress(int spaceSize){
 short int FindDirSpace(){
 	for(short int i = DIR_START; i<(DIR_START + DIR_SIZE); i +=16 ){
 		if(MEMORY[i] == 0x00){
-			printf("Found space in directory at: %d\n", i);
+			//printf("Found space in directory at: %d\n", i);//debug
 			return i;
 		}
 	}
@@ -197,7 +197,7 @@ short int FindDirSpace(){
 int ParseFileName(const char *str, char *name, char *extension){
 	char *dot = strchr(str, '.');
 	int length = strlen(str);
-	printf("Parsing File: %s\n", str);
+	//printf("Parsing File: %s\n", str);//debug
 	//ensure extension is given
 	if(dot == NULL){
 		printf("Invalid file name. File name must include extension\n");
@@ -268,12 +268,12 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 	}
 		
 	//write name
-	printf("Writing name: %s\nto location: %d\n", name, (entryLoc + DIR_ENTRY_NAME));
+	//printf("Writing name: %s\nto location: %d\n", name, (entryLoc + DIR_ENTRY_NAME));//debug
 	for(int i = 0; i < MAX_NAME_LEN; i++){
 		MEMORY[entryLoc + DIR_ENTRY_NAME + i] = (unsigned char)name[i];
 	}
 	//write extension
-	printf("Writing ext: %s\nto location: %d\n", ext, (entryLoc + DIR_ENTRY_EXT));
+	//printf("Writing ext: %s\nto location: %d\n", ext, (entryLoc + DIR_ENTRY_EXT));//debug
 	for(int i = 0; i < MAX_EXT_LEN; i++){
 		MEMORY[entryLoc + DIR_ENTRY_EXT + i] = (unsigned char)ext[i];
 	} 
@@ -417,6 +417,25 @@ int RemoveDirEntry(char *fname){
 	}
 }
 
+void PrintDir(){
+	//TODO: remove next for production
+	printf("%-15s %-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address", "Next");
+	printf("---------------------------------------------------------------------\n");//perfect size
+	int entry = DIR_START;
+	while(entry != 0){
+		unsigned char entryName[MAX_NAME_LEN + 1];
+		unsigned char entryExt[MAX_EXT_LEN + 1];
+		short int size;
+		short int loc;
+		short int next;
+		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
+		
+		printf("%-15s %-15s %-15d %-15d %-15d\n", entryName, entryExt, size, loc, next);	
+		
+		entry = next;
+	}
+}
+
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
 void Create(struct FileControlBlock *fcb, short int size, char *name){
 	//print inputs to test validity - remove
@@ -475,37 +494,6 @@ int main() {
 	}
 	printf("\n");
 	
-	//testing creating a directory entry
-	AddDirEntry("world.cs", 10, 5);
-	AddDirEntry("note.txt", 1, 16);
-	AddDirEntry("vibe.c", 10, 17);
-	AddDirEntry("trust.nve", 10, 27);
-	
-	int x = RemoveDirEntry("test.nve");
-	printf("X: %d\n", x);
-	
-	AddDirEntry("ebiv.cs", 5, 17);
-
-	printf("%-15s %-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address", "Next");
-	printf("---------------------------------------------------------------------\n");//perfect size
-	
-	for(int i = 0; i<5; i++){
-		PrintDirEntry(DIR_START + DIR_ENTRY_LEN*i);
-	}
-	
-	printf("\nHead: %hd, Tail: %hd\n", ReadSInt(DIR_HEAD), ReadSInt(DIR_TAIL));
-	
-	printf("\n");
-	printf("Hex read: \n");
-	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN*5); i++){
-		if( i % 16 == 0){
-			printf("\n");
-			printf("%d: ", i);
-		}
-		printf("%02X ", MEMORY[i]);
-		
-	}
-
 	
 	printf("\n");
 	return 0;
@@ -621,6 +609,29 @@ int main() {
 	}
 	printf("\n");
 	*/
+	
+//testing creating a directory entry
+	/*AddDirEntry("world.cs", 10, 5);
+	AddDirEntry("note.txt", 1, 16);
+	AddDirEntry("vibe.c", 10, 17);
+	RemoveDirEntry("vibe.c");
+	AddDirEntry("cj.cs", 5, 17);
+
+	
+	printf("\nHead: %hd, Tail: %hd\n", ReadSInt(DIR_HEAD), ReadSInt(DIR_TAIL));
+	
+	PrintDir();
+	
+	printf("\n");
+	printf("Hex read:");
+	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN*5); i++){
+		if( i % 16 == 0){
+			printf("\n");
+			printf("%d: ", i);
+		}
+		printf("%02X ", MEMORY[i]);
+		
+	}*/
 
 
 
