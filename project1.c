@@ -43,7 +43,7 @@ const unsigned int DIR_TAIL = 2060;
 	// 2 bytes for memory location of next entry in linked list (short int)
 const unsigned int DIR_START = 2064;
 const unsigned int DIR_SIZE = 8176;
-const unsigned int DIR_ENTRY_END = 16;
+const unsigned int DIR_ENTRY_LEN = 16;
 const unsigned int DIR_ENTRY_NAME = 0;
 const unsigned int DIR_ENTRY_EXT = 7;
 const unsigned int DIR_ENTRY_SIZE = 10;
@@ -243,8 +243,24 @@ void AddDirEntry(const char *fname, int fsize, int flocation){
 	}
 	//input the file details at the entry location
 	
+	//parsing name and extension from fname
+	char name[7];
+	char ext[3];
+	
+	int valid = ParseFileName(fname, name, ext);
+	if(valid < 0){
+		printf("Could not add directory entry: Invalid file name.");
+		return;
+	}
+		
 	//write name
+	for(int i = 0; i < 7; i++){
+		MEMORY[entryLoc + DIR_ENTRY_NAME + i] = (unsigned char)name[i];
+	}
 	//write extension
+	for(int i = 0; i < 3; i++){
+		MEMORY[entryLoc + DIR_ENTRY_EXT + i] = (unsigned char)ext[i];
+	} 
 	//write size in blocks
 	WriteSInt((entryLoc + DIR_ENTRY_SIZE),fsize); 
 	//write storage location
@@ -322,40 +338,46 @@ int main() {
 	}
 	printf("\n");
 	
-	//test parsing a file name
-	unsigned char array[10];
-	char name[7];
-	char ext[3];
-	
-	//initial array
-	printf("Initial: ");
-	for(int i = 0; i<10; i++){
-		printf("%02X ", array[i]);
+	//testing creating a directory entry
+	printf("Initial: \n");
+	short int head = ReadSInt(DIR_HEAD);
+	short int tail = ReadSInt(DIR_TAIL);
+	printf("Head: %hd, Tail: %hd (expected 0)\n", head, tail);
+	printf("entry hex: ");
+	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
+		printf("%02X ", MEMORY[i]);
 	}
 	printf("\n");
-	
-	ParseFileName("world.cs", name, ext);
-	printf("Name: %s, Ext: %s\n", name, ext);
-	
-	//copy in name
-	for(int i = 0; i<7; i++){
-		array[i] = (unsigned char)name[i];
-	}
-	
-	for(int i = 0; i < 3; i++){
-		array[i+7] = (unsigned char)ext[i];
-	}
-	
-	//final array
-	printf("Final: ");
-	for(int i = 0; i<10; i++){
-		printf("%02X ", array[i]);
+	printf("entry char: ");
+	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
+		printf("%c", MEMORY[i]);
 	}
 	printf("\n");
-	for(int i = 0; i<10; i++){
-		printf("%c", array[i]);
+	short int sizen = ReadSInt(DIR_START + DIR_ENTRY_SIZE);
+	short int loc = ReadSInt(DIR_START + DIR_ENTRY_LOC);
+	short int next = ReadSInt(DIR_START + DIR_ENTRY_NEXT);
+	printf("size: %hd, loc: %hd, next: %hd\n", sizen, loc, next);
+	
+	AddDirEntry("world.cs", 10, 5);
+	
+	printf("\n\nFinal: \n");
+	head = ReadSInt(DIR_HEAD);
+	tail = ReadSInt(DIR_TAIL);
+	sizen = ReadSInt(DIR_START + DIR_ENTRY_SIZE);
+	loc = ReadSInt(DIR_START + DIR_ENTRY_LOC);
+	next = ReadSInt(DIR_START + DIR_ENTRY_NEXT);
+	printf("Head: %hd, Tail: %hd (expected 0)\n", head, tail);
+	printf("entry hex: ");
+	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
+		printf("%02X ", MEMORY[i]);
 	}
 	printf("\n");
+	printf("entry char: ");
+	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN); i++){
+		printf("%c", MEMORY[i]);
+	}
+	printf("\n");
+	printf("size: %hd, loc: %hd, next: %hd\n", sizen, loc, next);
 	
 	printf("\n");
 	return 0;
@@ -435,6 +457,42 @@ int main() {
 	WriteBit(1, array, 0, 19);
 	int y = ReadBit(array, 0, 19);
 	printf("Result 1:%d, Result2:%d",x,y);*/
+
+//test parsing a file name
+	/*unsigned char array[10];
+	char name[7];
+	char ext[3];
+	
+	//initial array
+	printf("Initial: ");
+	for(int i = 0; i<10; i++){
+		printf("%02X ", array[i]);
+	}
+	printf("\n");
+	
+	ParseFileName("world.cs", name, ext);
+	printf("Name: %s, Ext: %s\n", name, ext);
+	
+	//copy in name
+	for(int i = 0; i<7; i++){
+		array[i] = (unsigned char)name[i];
+	}
+	
+	for(int i = 0; i < 3; i++){
+		array[i+7] = (unsigned char)ext[i];
+	}
+	
+	//final array
+	printf("Final: ");
+	for(int i = 0; i<10; i++){
+		printf("%02X ", array[i]);
+	}
+	printf("\n");
+	for(int i = 0; i<10; i++){
+		printf("%c", array[i]);
+	}
+	printf("\n");
+	*/
 
 
 
