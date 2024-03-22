@@ -344,7 +344,8 @@ int FindDirEntry(char *fname){
 		short int size;
 		short int loc;
 		short int next;
-		GetDirEntry(entry, name, ext, &size, &loc, &next);
+		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
+				
 		if(memcmp(entryName, name, MAX_NAME_LEN + 1) == 0 && memcmp(entryExt, ext, MAX_EXT_LEN + 1) == 0){
 			//if the entry matches the search criteria
 			printf("Found file at location: %d", entry);
@@ -428,8 +429,6 @@ int main() {
 	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*2);
 	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*3);
 	
-	int location = FindDirEntry("vibe.c");
-	printf("Found file at: %d\n", location);
 	
 	printf("\n");
 	printf("Hex read: \n");
