@@ -281,6 +281,8 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 	WriteSInt((entryLoc + DIR_ENTRY_SIZE),fsize); 
 	//write storage location
 	WriteSInt((entryLoc + DIR_ENTRY_LOC), flocation);
+	//write next (always 0 for the latest entry)
+	WriteSInt((entryLoc + DIR_ENTRY_NEXT), 0);
 	
 	//if this is the first entry initialize head and tail
 	if(ReadSInt(DIR_HEAD) == 0){
@@ -357,6 +359,64 @@ int FindDirEntry(char *fname){
 	return -1;
 }
 
+//removes a file's entry from the directory. Returns 0 on success and -1 on fail
+int RemoveDirEntry(char *fname){
+	//parse and validate fname
+	char name[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[4] = {0x00, 0x00, 0x00, 0x00};
+	int valid = ParseFileName(fname, name, ext);
+	if(valid < 0){
+		printf("File name is not valid");
+		return -1;
+	}
+	int entry = DIR_START;
+	int prev = DIR_START;
+	while(entry != 0){
+		unsigned char entryName[MAX_NAME_LEN + 1];
+		unsigned char entryExt[MAX_EXT_LEN + 1];
+		short int size;
+		short int loc;
+		short int next;
+		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
+				
+		if(memcmp(entryName, name, MAX_NAME_LEN + 1) == 0 && memcmp(entryExt, ext, MAX_EXT_LEN + 1) == 0){
+			//if the entry matches the search criteria
+			break;
+		}
+		prev = entry;
+		entry = next;
+	}
+	if(entry == 0){
+		printf("Requested file to delete does not exist\n");
+		return -1;
+	}else{
+		//if we are removing the head entry make the next entry the head
+		short int headLoc = ReadSInt(DIR_HEAD);
+		if(headLoc == entry){
+			WriteSInt(DIR_HEAD, ReadSInt(headLoc + DIR_ENTRY_NEXT));
+			//if the head is 0 then the last entry is removed and tail must also be updated to 0
+			if(ReadSInt(DIR_HEAD) == 0){
+				WriteSInt(DIR_TAIL, 0);
+			}
+		}else{
+			//the entry being removed is not the head
+			//make the previous entry's next pointer point to the entry previously pointed to by the removed
+			WriteSInt(prev + DIR_ENTRY_NEXT, ReadSInt(entry + DIR_ENTRY_NEXT));
+			//if the tail was removed set the tail to prev
+			if(ReadSInt(DIR_TAIL) == entry){
+				WriteSInt(DIR_TAIL, prev);
+			}
+		}
+		//null the entry data
+		for(int i = 0; i < DIR_ENTRY_LEN; i++){
+			MEMORY[entry + i] = 0x00;
+		}
+		
+		//successful removal
+		return 0;
+	}
+}
+
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
 void Create(struct FileControlBlock *fcb, short int size, char *name){
 	//print inputs to test validity - remove
@@ -420,19 +480,24 @@ int main() {
 	AddDirEntry("note.txt", 1, 16);
 	AddDirEntry("vibe.c", 10, 17);
 	AddDirEntry("trust.nve", 10, 27);
+	
+	int x = RemoveDirEntry("test.nve");
+	printf("X: %d\n", x);
+	
+	AddDirEntry("ebiv.cs", 5, 17);
 
 	printf("%-15s %-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address", "Next");
 	printf("---------------------------------------------------------------------\n");//perfect size
 	
-	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*0);
-	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*1);
-	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*2);
-	PrintDirEntry(DIR_START + DIR_ENTRY_LEN*3);
+	for(int i = 0; i<5; i++){
+		PrintDirEntry(DIR_START + DIR_ENTRY_LEN*i);
+	}
 	
+	printf("\nHead: %hd, Tail: %hd\n", ReadSInt(DIR_HEAD), ReadSInt(DIR_TAIL));
 	
 	printf("\n");
 	printf("Hex read: \n");
-	for(int i = DIR_START; i < (DIR_START + 64); i++){
+	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN*5); i++){
 		if( i % 16 == 0){
 			printf("\n");
 			printf("%d: ", i);
