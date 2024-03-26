@@ -617,7 +617,7 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 	//ensure name is not taken
 	if(FindDirEntry(name) > 0){
 		printf("Could not Create File. Another file with that namne already exists\n");
-		return;
+		return -1;
 	}	
 	//ensure the file size is at least less than the free block count
 	int freeBlocks = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
@@ -631,6 +631,7 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 			//if no space exists error (for now)
 			printf("There is not a large enough space available for that file\n");
 			//TODO: maybe apply compaction...
+			return -1;
 		}else{
 			//if space exists mark it as used
 			for(int i = blockIndex; i < (size + blockIndex); i++){
@@ -642,9 +643,73 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 			WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, (freeBlocks - size));
 			//run the open function to give the fcb values
 			int handle = Open(name, localOpenFiles);
+			return handle;
 		}
 			
 	}
+}
+
+int Read(int hand, unsigned char *output){
+	//search gft for handle based on name
+		//if not found err 
+	
+	GlobalTableEntry entry = GLOBAL_FILE_TABLE[hand];
+	if(entry.fname[0] == '\0' || entry.fcb.firstBlockIndex == 0){
+		printf("Could not find file to read, bad handle\n");
+		return -1;
+	}
+	
+	//get fcb from gft
+	int start = entry.fcb.firstBlockIndex * 2048;
+	int size = entry.fcb.fileSizeBlocks * 2048;
+	
+	//strncpy into a sized array at file location and size
+	unsigned char buffer[size]; //block size in bytes
+	
+	strncpy(buffer, &MEMORY[start], size);
+	
+	//add null terminator if not found
+	if(strchr(buffer, '\0') < 0){
+		buffer[size - 1] = '\0';
+	}
+	//return the array
+	strcpy(output, buffer);
+	return 0;
+}
+
+int Write(int hand, char *input){
+	//search gft and check name
+	
+	//get fcb
+	
+	GlobalTableEntry entry = GLOBAL_FILE_TABLE[hand];
+	if(entry.fname[0] == '\0' || entry.fcb.firstBlockIndex == 0){
+		printf("Could not find file to read, bad handle\n");
+		return -1;
+	}
+	
+	//get fcb from gft
+	int start = entry.fcb.firstBlockIndex * 2048;
+	int size = entry.fcb.fileSizeBlocks * 2048;
+	
+	//strncpy into a sized array at file location and size
+	unsigned char buffer[size]; //block size in bytes
+	
+	//check input size
+	if(strlen(input) > size){
+		printf("input string larger than file size, cannot write\n");
+		return -1;
+	}
+	//move input into buffer to manage null term
+	strcpy(buffer, input);
+	if(strchr(buffer, '\0') < 0){
+		buffer[size - 1] = '\0';
+	}
+
+	//strncpy into appropriate space
+	strcpy(&MEMORY[start], buffer);	
+	//return 0
+	return 0;
 }
 
 
@@ -689,8 +754,21 @@ int main() {
 		printf("\n\nOpen res2:\nGFT1: %s, %d, %d, %d (expect prog.c, 5, 29, 1)\n LFT: %s, %d (expect prog.c,1)\n\n", GLOBAL_FILE_TABLE[y].fname, GLOBAL_FILE_TABLE[y].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[y].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[y].instances, localTable[1].fname, localTable[1].handle);
 
 
-	printf("File handle recieved: %d\n", y);
+	printf("File handles recieved: %d and %d\n", x, y);
 	
+	//Testing read write
+	unsigned char buffer[20 * 2048];
+	Read(x, buffer);
+	printf("X initial read:%s\n", buffer); 
+	unsigned char buffls[] = "Hello World!";
+	unsigned char ytest[] = "Whether we wanted it or not weve stepped into war with the cabal on mars!\nSo lets get to taking out their command one by one...\n\n";
+	Write(x, buffls);
+	Write(y, ytest);
+	unsigned char yout[5 * 2048];
+	Read(x, buffer);
+	printf("X final read: %s\n", buffer);
+	Read(y, yout);
+	printf("Y final read: %s\n", yout);
 	printf("\n");
 	return 0;
 }
