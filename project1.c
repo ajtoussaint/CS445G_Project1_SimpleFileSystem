@@ -295,7 +295,7 @@ int FreeSpaceAddress(int spaceSize){
 //find the first open space for a new entry in the directory
 //returns the index of the start of the space for the entry or -1 to indicate full directory
 short int FindDirSpace(){
-	for(short int i = DIR_START; i<(DIR_START + DIR_SIZE); i +=16 ){
+	for(short int i = DIR_START; i<(DIR_START + DIR_SIZE); i +=DIR_ENTRY_LEN ){
 		if(MEMORY[i] == 0x00){
 			//printf("Found space in directory at: %d\n", i);//debug
 			return i;
@@ -334,12 +334,12 @@ int ParseFileName(const char *str, char *name, char *extension){
 	}
 	
 	//validate lengths
-	if( strlen(dot + 1) > 3){
+	if( strlen(dot + 1) > MAX_EXT_LEN){
 		printf("Invalid file name. Extension is too long. Three characters max");
 		return -1;
 	}
 	
-	if((dot - str) > 7){
+	if((dot - str) > MAX_NAME_LEN){
 		printf("File name is too long. Seven characters max");
 		return -1;
 	}
@@ -443,8 +443,8 @@ short int PrintDirEntry(int entryLoc){
 //returns the memory location of a files directory entry based on name or -1 if it is not found/invalid name
 int FindDirEntry(char *fname){
 	//parse and validate fname
-	char name[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	char ext[4] = {0x00, 0x00, 0x00, 0x00};
+	char name[MAX_NAME_LEN + 1] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[MAX_EXT_LEN + 1] = {0x00, 0x00, 0x00, 0x00};
 	int valid = ParseFileName(fname, name, ext);
 	if(valid < 0){
 		printf("File name is not valid");
@@ -475,8 +475,8 @@ int FindDirEntry(char *fname){
 //removes a file's entry from the directory. Returns 0 on success and -1 on fail
 int RemoveDirEntry(char *fname){
 	//parse and validate fname
-	char name[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	char ext[4] = {0x00, 0x00, 0x00, 0x00};
+	char name[MAX_NAME_LEN + 1] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[MAX_EXT_LEN + 1] = {0x00, 0x00, 0x00, 0x00};
 	int valid = ParseFileName(fname, name, ext);
 	if(valid < 0){
 		printf("File name is not valid");
@@ -550,9 +550,12 @@ void PrintDir(){
 }
 
 //pointer to a FileControlBlock struct for output, size of the file in blocks, file name
-void Create(struct FileControlBlock *fcb, char *name, short int size){
-	//TODO: ensure file does not already exist
-	
+void Create(char *name, short int size){
+	//ensure name is not taken
+	if(FindDirEntry(name) > 0){
+		printf("Could not Create File. Another file with that namne already exists\n");
+		return;
+	}	
 	//ensure the file size is at least less than the free block count
 	int freeBlocks = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
 	if(size > freeBlocks){
@@ -648,11 +651,14 @@ int main() {
 	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n\n", num, size, free);
 	
 	//testing Create Function
-	struct FileControlBlock fcb;
-	Create(&fcb, "world.txt", 20);
+	Create("world.txt", 20);
+	Create("prog.c", 5);
 	
 	//shows bitmap
-	for(int i = 0; i < 32; i++){
+	for(int i = 0; i < 64 ; i++){
+		if(i % 8 == 0){
+			printf("\n");
+		} 
 		printf("%u",ReadBit(i));
 	}
 	printf("\n\n");
@@ -662,8 +668,14 @@ int main() {
 	//Testing Open Function
 	struct LocalTableEntry localTable[MAX_LOCAL_FILES];
 	int x = Open("world.txt", localTable);
+	int y = Open("prog.c", localTable);
 	
-	printf("\n\nOpen res:\nGFT0: %s, %d, %d, %d (expect world.txt, 20, 5, 1)\n LFT: %s, %d (expect world.txt,0)\n\n", GLOBAL_FILE_TABLE[0].fname, GLOBAL_FILE_TABLE[0].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[0].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[0].instances, localTable[0].fname, localTable[0].handle);
+	printf("\n\nOpen res:\nGFT0: %s, %d, %d, %d (expect world.txt, 20, 5, 1)\n LFT: %s, %d (expect world.txt,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
+
+		printf("\n\nOpen res2:\nGFT0: %s, %d, %d, %d (expect prog.c, 5, 25, 1)\n LFT: %s, %d (expect prog.c,1)\n\n", GLOBAL_FILE_TABLE[y].fname, GLOBAL_FILE_TABLE[y].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[y].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[y].instances, localTable[1].fname, localTable[1].handle);
+
+
+	printf("File handle recieved: %d\n", x);
 	
 	printf("\n");
 	return 0;
