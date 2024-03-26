@@ -740,6 +740,41 @@ int Close(int handle, struct LocalTableEntry *localOpenFiles){
 	} 
 }
 
+int Delete(char *fname){
+	//check global table for an instance
+	int exists = FindInGlobalTable(fname);
+	if(exists >= 0){
+		printf("File is open in some process, cannot be deleted\n");
+		return -1;
+	}
+	//get file data from the directory
+	int entryLoc = FindDirEntry(fname);
+	
+	unsigned char name[MAX_NAME_LEN];
+	unsigned char ext[MAX_EXT_LEN];
+	short int size;
+	short int loc;
+	short int next;
+	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);
+	
+	//clear the actural data from the file
+	unsigned char buffer[size*2048];
+	for(int i = 0; i < size*2048; i++){
+		buffer[i] = 0x00;
+	}
+	strcpy(&MEMORY[loc * 2048], buffer);
+	
+	//Remove file from directory
+	int removeRes = RemoveDirEntry(fname);
+	
+	if(removeRes < 0){
+		printf("failed to remove file from directory, contents deleted\n");
+		return -1;
+	}
+	
+	return 0;
+}
+
 
 int main() {
 	
