@@ -340,7 +340,7 @@ int ParseFileName(const char *str, char *name, char *extension){
 		return -1;
 	}
 	
-	if((dot - str) > MAX_NAME_LEN){
+	if((dot - str) >= MAX_NAME_LEN){
 		printf("File name is too long. 21 characters max");
 		return -1;
 	}
@@ -350,7 +350,7 @@ int ParseFileName(const char *str, char *name, char *extension){
 
 	//copy file name into the name location
 	strncpy(name, str, (dot - str));
-	//name[dot - str] = '\0'; //not needed
+	name[dot - str] = '\0';
 	
 	//copy the extension to the extension location
 	strcpy(extension, (dot + 1));
