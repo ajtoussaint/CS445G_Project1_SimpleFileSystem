@@ -7,7 +7,7 @@
 
 //allocate 1MB of memory
 #define STORAGE_LEN 1048576
-unsigned char MEMORY[STORAGE_LEN]; // each array index represents a byte
+unsigned char MEMORY[STORAGE_LEN] = {0}; // each array index represents a byte
 
 //variables store the memory index of the value
 struct VolumeControlBlock{
@@ -107,7 +107,7 @@ int FindInGlobalTable(char *fname){
 		}
 	}
 	//if the loop is completed the entry was not found
-	printf("file was not found in global table\n");//debug
+	printf("file %s was not found in global table\n", fname);//debug
 	return -1;
 }
 
@@ -453,7 +453,7 @@ int FindDirEntry(char *fname){
 		printf("File name is not valid");
 		return -1;
 	}
-	printf("name: %s, ext: %s\n", name, ext);//debug
+	//printf("name: %s, ext: %s\n", name, ext);//debug
 	//iterate directory linked list to find the file
 	int entry = DIR_START;
 	while(entry != 0){
@@ -463,16 +463,16 @@ int FindDirEntry(char *fname){
 		short int loc;
 		short int next;
 		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
-		printf("ename: %s, e-ext: %s\n", entryName, entryExt);
+		/*printf("ename: %s, e-ext: %s\n", entryName, entryExt);
 		for(int i = 0; i < MAX_NAME_LEN; i++){
 		//debug
 			printf(" %02X = %02X, ", name[i], entryName[i]);
 		}
-		printf("\n");
+		printf("\n");*/
 				
 		if(strcmp(entryName, name) == 0 && strcmp(entryExt, ext) == 0){
 			//if the entry matches the search criteria
-			printf("Found file at location: %d", entry);
+			printf("Found file at location: %d\n", entry);
 			return entry;
 		}
 		entry = next;
@@ -618,7 +618,7 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 		//else create a new FCB for the file based on directory info
 		int dirEntry = FindDirEntry(fname);
 		//TODO: case for not found
-		printf("reading open at %d\n", dirEntry); //DEBGU
+		//printf("reading open at %d\n", dirEntry); //DEBGU
 		fcb.fileSizeBlocks = ReadSInt(dirEntry + DIR_ENTRY_SIZE);
 		fcb.firstBlockIndex = ReadSInt(dirEntry + DIR_ENTRY_LOC);
 		//add the entry to the GFT and get the index
@@ -678,18 +678,18 @@ int main() {
 	PrintDir();
 	
 	//Testing Open Function
-	struct LocalTableEntry localTable[MAX_LOCAL_FILES];
+	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
 	int x = Open("world.txt", localTable);
 	int y = Open("prog.c", localTable);
-	/*
+	
 	printf("\n\nOpen res:\nGFT0: %s, %d, %d, %d (expect world.txt, 20, 9, 1)\n LFT: %s, %d (expect world.txt,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
 
-		printf("\n\nOpen res2:\nGFT0: %s, %d, %d, %d (expect prog.c, 5, 29, 1)\n LFT: %s, %d (expect prog.c,1)\n\n", GLOBAL_FILE_TABLE[y].fname, GLOBAL_FILE_TABLE[y].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[y].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[y].instances, localTable[1].fname, localTable[1].handle);
+		printf("\n\nOpen res2:\nGFT1: %s, %d, %d, %d (expect prog.c, 5, 29, 1)\n LFT: %s, %d (expect prog.c,1)\n\n", GLOBAL_FILE_TABLE[y].fname, GLOBAL_FILE_TABLE[y].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[y].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[y].instances, localTable[1].fname, localTable[1].handle);
 
 
-	printf("File handle recieved: %d\n", x);
+	printf("File handle recieved: %d\n", y);
 	
-	printf("\n");*/
+	printf("\n");
 	return 0;
 }
 
