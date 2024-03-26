@@ -6,7 +6,8 @@
 #include <string.h>
 
 //allocate 1MB of memory
-unsigned char MEMORY[1048576]; // each array index represents a byte
+#define STORAGE_LEN 1048576
+unsigned char MEMORY[STORAGE_LEN]; // each array index represents a byte
 
 //variables store the memory index of the value
 struct VolumeControlBlock{
@@ -28,31 +29,31 @@ const struct VolumeControlBlock VOLUME_CONTROL_BLOCK = {0, 4, 8, 12};
 const unsigned int BITMAP_NUM_BITS = 512;
 
 
-//second-fifth data block (2048 - 10239) is reserved for the directory
+//second-ninth data block (2048 - 16352) is reserved for the directory
 	
-	//first 16 bytes (2048 - 2063) are used to store head and tail for linked list as short ints
-const unsigned int DIR_HEAD = 2058;
-const unsigned int DIR_TAIL = 2060;
+	//first 32 bytes (2048 - 2079) are used to store head and tail for linked list as short ints
+const unsigned int DIR_HEAD = 2076;
+const unsigned int DIR_TAIL = 2078;
 	 
-	//Each entry includes filename, start block number, and file size (16 bytes)
-	//4 blocks are needed to store up to 507 file entries (1 block files)
+	//Each entry includes filename, start block number, and file size (32 bytes)
+	//8 blocks are needed to store up to 5 file entries (1 block files)
 	
-	//name is a series of 7 unsigned  char (1 byte ec.) and a 3 byte extension = 10 bytes
+	//name is a series of 22 unsigned char including \0 at the end (1 byte ec.) and a 4 byte extension = 26 bytes
 	// 2 bytes for size (short int)
 	// 2 bytes for location (short int)	
 	// 2 bytes for memory location of next entry in linked list (short int)
-const unsigned int DIR_START = 2064;
-const unsigned int DIR_SIZE = 8176;
-const unsigned int DIR_ENTRY_LEN = 16;
+const unsigned int DIR_START = 2080;
+const unsigned int DIR_SIZE = 16352;
+const unsigned int DIR_ENTRY_LEN = 32;
 const unsigned int DIR_ENTRY_NAME = 0;
-const unsigned int DIR_ENTRY_EXT = 7;
-const unsigned int DIR_ENTRY_SIZE = 10;
-const unsigned int DIR_ENTRY_LOC = 12;
-const unsigned int DIR_ENTRY_NEXT = 14;
+const unsigned int DIR_ENTRY_EXT = 22;
+const unsigned int DIR_ENTRY_SIZE = 26;
+const unsigned int DIR_ENTRY_LOC = 28;
+const unsigned int DIR_ENTRY_NEXT = 30;
 
 //userful constants
-#define MAX_NAME_LEN 7
-#define MAX_EXT_LEN 3
+#define MAX_NAME_LEN 22
+#define MAX_EXT_LEN 4
 
 //File control structures
 struct FileControlBlock{
@@ -69,7 +70,7 @@ void CopyFCB(struct FileControlBlock *dest, struct FileControlBlock *src){
 #define MAX_LOCAL_FILES 8
 
 typedef struct {
-	char fname[12];
+	char fname[MAX_NAME_LEN + MAX_EXT_LEN];
 	struct FileControlBlock fcb;
 	short int instances;
 }GlobalTableEntry;
@@ -128,7 +129,7 @@ int RemoveFromGlobalTable(char *fname){
 }
 
 struct LocalTableEntry{
-	char fname[12];
+	char fname[MAX_NAME_LEN + MAX_EXT_LEN];
 	short int handle; //index in Global table
 };
 
@@ -210,8 +211,8 @@ void WriteUInt(int index, unsigned int value){
 
 short int ReadSInt(int index){
 	//ensure index in memory is a valid short int location
-	if( index < 2048 || (index % 16) < 10 || (index % 2) > 0){
-		printf("Invalid short integer read\n");
+	if( index < DIR_HEAD || (index % DIR_ENTRY_LEN) < DIR_ENTRY_SIZE || (index % 2) > 0){
+		printf("Invalid short integer read: %d\n",index);
 		return 0;
 	}
 
@@ -226,8 +227,8 @@ short int ReadSInt(int index){
 
 void WriteSInt(int index, short int value){
 	//ensure index in memory is a valid short int location
-	if( index < 2048 || (index % 16) < 10 || (index % 2) > 0){
-		printf("Invalid short integer write\n");
+	if( index < DIR_HEAD || (index % DIR_ENTRY_LEN) < DIR_ENTRY_SIZE || (index % 2) > 0){
+		printf("Invalid short integer write: %d\n",index);
 		return;
 	}
 	for(int i=0; i<2; i++){
@@ -340,7 +341,7 @@ int ParseFileName(const char *str, char *name, char *extension){
 	}
 	
 	if((dot - str) > MAX_NAME_LEN){
-		printf("File name is too long. Seven characters max");
+		printf("File name is too long. 21 characters max");
 		return -1;
 	}
 	
@@ -349,11 +350,11 @@ int ParseFileName(const char *str, char *name, char *extension){
 
 	//copy file name into the name location
 	strncpy(name, str, (dot - str));
-	name[dot - str] = '\0';
+	//name[dot - str] = '\0'; //not needed
 	
 	//copy the extension to the extension location
 	strcpy(extension, (dot + 1));
-	extension[MAX_EXT_LEN] = '\0';
+	//extension[MAX_EXT_LEN] = '\0';
 	return 0;
 } 
 
@@ -370,8 +371,8 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 	//input the file details at the entry location
 
 	//parsing name and extension from fname
-	char name[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	char ext[4] = {0x00, 0x00, 0x00, 0x00};
+	char name[MAX_NAME_LEN]; //= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
 	
 	int valid = ParseFileName(fname, name, ext);
 
@@ -391,6 +392,7 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 		MEMORY[entryLoc + DIR_ENTRY_EXT + i] = (unsigned char)ext[i];
 	} 
 	//write size in blocks
+	//printf("Writing Sints for adddir in entry: %d",entryLoc);//debug
 	WriteSInt((entryLoc + DIR_ENTRY_SIZE),fsize); 
 	//write storage location
 	WriteSInt((entryLoc + DIR_ENTRY_LOC), flocation);
@@ -416,11 +418,12 @@ void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short in
 		for(int i = 0; i < MAX_NAME_LEN; i++){
 			name[i] = MEMORY[entryLoc + DIR_ENTRY_NAME + i];
 		}
-		name[MAX_NAME_LEN] = '\0';
+		//name[MAX_NAME_LEN] = '\0';
 		for(int i = 0; i < MAX_EXT_LEN; i++){
 			ext[i] = MEMORY[entryLoc + DIR_ENTRY_EXT + i];
 		}
-		ext[MAX_EXT_LEN] = '\0';
+		//ext[MAX_EXT_LEN] = '\0';
+		//printf("Reading sints for gde at %d\n", entryLoc);//debug
 		*size = ReadSInt(entryLoc + DIR_ENTRY_SIZE);
 		*loc = ReadSInt(entryLoc + DIR_ENTRY_LOC);
 		*next = ReadSInt(entryLoc + DIR_ENTRY_NEXT);
@@ -430,8 +433,8 @@ void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short in
 
 //prints a directory entry at a given location. Returns the location of the next entry or 0 if last entry
 short int PrintDirEntry(int entryLoc){
-	unsigned char name[MAX_NAME_LEN + 1];
-	unsigned char ext[MAX_EXT_LEN + 1];
+	unsigned char name[MAX_NAME_LEN];
+	unsigned char ext[MAX_EXT_LEN];
 	short int size;
 	short int loc;
 	short int next;
@@ -443,25 +446,31 @@ short int PrintDirEntry(int entryLoc){
 //returns the memory location of a files directory entry based on name or -1 if it is not found/invalid name
 int FindDirEntry(char *fname){
 	//parse and validate fname
-	char name[MAX_NAME_LEN + 1] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	char ext[MAX_EXT_LEN + 1] = {0x00, 0x00, 0x00, 0x00};
+	char name[MAX_NAME_LEN]; //= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
 	int valid = ParseFileName(fname, name, ext);
 	if(valid < 0){
 		printf("File name is not valid");
 		return -1;
 	}
-	
+	printf("name: %s, ext: %s\n", name, ext);//debug
 	//iterate directory linked list to find the file
 	int entry = DIR_START;
 	while(entry != 0){
-		unsigned char entryName[MAX_NAME_LEN + 1];
-		unsigned char entryExt[MAX_EXT_LEN + 1];
+		unsigned char entryName[MAX_NAME_LEN];
+		unsigned char entryExt[MAX_EXT_LEN];
 		short int size;
 		short int loc;
 		short int next;
 		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
+		printf("ename: %s, e-ext: %s\n", entryName, entryExt);
+		for(int i = 0; i < MAX_NAME_LEN; i++){
+		//debug
+			printf(" %02X = %02X, ", name[i], entryName[i]);
+		}
+		printf("\n");
 				
-		if(memcmp(entryName, name, MAX_NAME_LEN + 1) == 0 && memcmp(entryExt, ext, MAX_EXT_LEN + 1) == 0){
+		if(strcmp(entryName, name) == 0 && strcmp(entryExt, ext) == 0){
 			//if the entry matches the search criteria
 			printf("Found file at location: %d", entry);
 			return entry;
@@ -469,14 +478,15 @@ int FindDirEntry(char *fname){
 		entry = next;
 	}
 	//if file is not found return -1
+	printf("%s not found in directory\n", fname);
 	return -1;
 }
 
 //removes a file's entry from the directory. Returns 0 on success and -1 on fail
 int RemoveDirEntry(char *fname){
 	//parse and validate fname
-	char name[MAX_NAME_LEN + 1] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
-	char ext[MAX_EXT_LEN + 1] = {0x00, 0x00, 0x00, 0x00};
+	char name[MAX_NAME_LEN]; //= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
 	int valid = ParseFileName(fname, name, ext);
 	if(valid < 0){
 		printf("File name is not valid");
@@ -485,14 +495,14 @@ int RemoveDirEntry(char *fname){
 	int entry = DIR_START;
 	int prev = DIR_START;
 	while(entry != 0){
-		unsigned char entryName[MAX_NAME_LEN + 1];
-		unsigned char entryExt[MAX_EXT_LEN + 1];
+		unsigned char entryName[MAX_NAME_LEN];
+		unsigned char entryExt[MAX_EXT_LEN];
 		short int size;
 		short int loc;
 		short int next;
 		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
 				
-		if(memcmp(entryName, name, MAX_NAME_LEN + 1) == 0 && memcmp(entryExt, ext, MAX_EXT_LEN + 1) == 0){
+		if(memcmp(entryName, name, MAX_NAME_LEN) == 0 && memcmp(entryExt, ext, MAX_EXT_LEN) == 0){
 			//if the entry matches the search criteria
 			break;
 		}
@@ -536,8 +546,8 @@ void PrintDir(){
 	printf("---------------------------------------------------------------------\n");//perfect size
 	int entry = DIR_START;
 	while(entry != 0){
-		unsigned char entryName[MAX_NAME_LEN + 1];
-		unsigned char entryExt[MAX_EXT_LEN + 1];
+		unsigned char entryName[MAX_NAME_LEN];
+		unsigned char entryExt[MAX_EXT_LEN];
 		short int size;
 		short int loc;
 		short int next;
@@ -607,6 +617,8 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 	}else{
 		//else create a new FCB for the file based on directory info
 		int dirEntry = FindDirEntry(fname);
+		//TODO: case for not found
+		printf("reading open at %d\n", dirEntry); //DEBGU
 		fcb.fileSizeBlocks = ReadSInt(dirEntry + DIR_ENTRY_SIZE);
 		fcb.firstBlockIndex = ReadSInt(dirEntry + DIR_ENTRY_LOC);
 		//add the entry to the GFT and get the index
@@ -638,9 +650,9 @@ int main() {
 	//initialize default values:
 	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT, 512);
 	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_SIZE, 2048);
-	WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, 507);
-	//Write the first 5 bits of the bitmap as in use
-	for(int i =0; i<5; i++){
+	WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, 503);
+	//Write the first 9 bits of the bitmap as in use
+	for(int i =0; i<9; i++){
 		WriteBit(i, 1);
 	}
 
@@ -669,15 +681,15 @@ int main() {
 	struct LocalTableEntry localTable[MAX_LOCAL_FILES];
 	int x = Open("world.txt", localTable);
 	int y = Open("prog.c", localTable);
-	
-	printf("\n\nOpen res:\nGFT0: %s, %d, %d, %d (expect world.txt, 20, 5, 1)\n LFT: %s, %d (expect world.txt,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
+	/*
+	printf("\n\nOpen res:\nGFT0: %s, %d, %d, %d (expect world.txt, 20, 9, 1)\n LFT: %s, %d (expect world.txt,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
 
-		printf("\n\nOpen res2:\nGFT0: %s, %d, %d, %d (expect prog.c, 5, 25, 1)\n LFT: %s, %d (expect prog.c,1)\n\n", GLOBAL_FILE_TABLE[y].fname, GLOBAL_FILE_TABLE[y].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[y].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[y].instances, localTable[1].fname, localTable[1].handle);
+		printf("\n\nOpen res2:\nGFT0: %s, %d, %d, %d (expect prog.c, 5, 29, 1)\n LFT: %s, %d (expect prog.c,1)\n\n", GLOBAL_FILE_TABLE[y].fname, GLOBAL_FILE_TABLE[y].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[y].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[y].instances, localTable[1].fname, localTable[1].handle);
 
 
 	printf("File handle recieved: %d\n", x);
 	
-	printf("\n");
+	printf("\n");*/
 	return 0;
 }
 
