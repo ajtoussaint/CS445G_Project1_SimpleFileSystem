@@ -115,6 +115,7 @@ int RemoveFromGlobalTable(char *fname){
 	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
 		if(strcmp(entry->fname, fname) == 0){
+			//TODO: check for instances before removing
 			//if the entry is found set its values to the default
 			printf("Found entry to remove at GFT[%d]\n", i);//debug
 			strcpy(entry->fname, "\0");
@@ -684,7 +685,7 @@ int Write(int hand, char *input){
 	
 	GlobalTableEntry entry = GLOBAL_FILE_TABLE[hand];
 	if(entry.fname[0] == '\0' || entry.fcb.firstBlockIndex == 0){
-		printf("Could not find file to read, bad handle\n");
+		printf("Could not find file to write, bad handle\n");
 		return -1;
 	}
 	
@@ -710,6 +711,33 @@ int Write(int hand, char *input){
 	strcpy(&MEMORY[start], buffer);	
 	//return 0
 	return 0;
+}
+
+int Close(int handle, struct LocalTableEntry *localOpenFiles){
+	//search gft for entry
+		//if not found error
+	//if found get the name
+	GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[handle];
+	if(entry->fname[0] == '\0' || entry->fcb.firstBlockIndex == 0){
+		printf("Could not find file to close, bad handle\n");
+		return -1;
+	}
+	
+	//get fcb from gft
+	char *name = entry->fname;
+	
+	//remove from local file table
+	int res = RemoveFromLocalTable(localOpenFiles, name);
+	if(res < 0){
+		printf("error removing file from local table\n");
+		return -1;
+	}	
+	//decrement global table instances
+	entry->instances--;
+	//if instances is 0 remove from global table
+	if(entry->instances < 1){
+		RemoveFromGlobalTable(name);
+	} 
 }
 
 
@@ -769,6 +797,12 @@ int main() {
 	printf("X final read: %s\n", buffer);
 	Read(y, yout);
 	printf("Y final read: %s\n", yout);
+	
+	int closeRes = Close(x, localTable);
+	printf("close res: %d\n", closeRes);
+	
+	printf("\n\nClose res:\nGFT0: %s, %d, %d, %d (expect , 0, 0, 0)\n LFT: %s, %d (expect ,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
+	
 	printf("\n");
 	return 0;
 }
