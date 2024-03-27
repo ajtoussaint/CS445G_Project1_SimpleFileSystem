@@ -8,6 +8,8 @@
 //allocate 1MB of memory
 #define STORAGE_LEN 1048576
 unsigned char MEMORY[STORAGE_LEN] = {0}; // each array index represents a byte
+//2k blocks
+#define BLOCK_SIZE_BYTES 2048
 
 //variables store the memory index of the value
 struct VolumeControlBlock{
@@ -85,14 +87,14 @@ int AppendToGlobalTable(GlobalTableEntry gte){
 		//check if the space is available
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
 		if(entry->fname[0] == '\0'){
-			printf("GFT[%d] is free\n", i);//debug
 			strcpy(entry->fname, gte.fname);
 			CopyFCB(&(entry->fcb), &gte.fcb);
 			entry->instances = gte.instances;
+			printf("Added %s to GFT at location %d\n", gte.fname, i);//debug
 			return i;
 		}
 	}
-	printf("no space available in global file table\n");
+	printf("could not append %s, no space available in global file table\n", gte.fname);//debug
 	return -1;
 }
 
@@ -116,16 +118,21 @@ int RemoveFromGlobalTable(char *fname){
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
 		if(strcmp(entry->fname, fname) == 0){
 			//TODO: check for instances before removing
+			if(entry->instances > 0){
+				printf("Could not remove %s from GFT, file is open\n", fname);
+				return -1;
+			}
 			//if the entry is found set its values to the default
-			printf("Found entry to remove at GFT[%d]\n", i);//debug
 			strcpy(entry->fname, "\0");
 			entry->fcb.fileSizeBlocks = 0;
 			entry->fcb.firstBlockIndex = 0;
 			entry->instances = 0;
+			printf("Removed %s from GFT[%d]\n", fname, i);//debug
 			return 0;
 		}
 	}
 	//if the loop is completed the entry was not found
+	printf("%s successfully removed from GFT\n", fname);
 	return -1;
 }
 
@@ -145,7 +152,7 @@ int AppendToLocalTable(struct LocalTableEntry *table, struct LocalTableEntry lte
 			return i;
 		}
 	}
-	printf("no space available in local file table\n");//debug
+	printf("failed to insert %s in LFT, no space available\n", lte.fname);//debug
 	return -1;
 }
 
@@ -157,22 +164,21 @@ int FindInLocalTable(struct LocalTableEntry *table, char *fname){
 			return i;
 		}
 	}
-	printf("File was not found in local table\n");//debug
+	printf("File %s was not found in local table\n", fname);//debug
 	return -1;
 }
 
 int RemoveFromLocalTable(struct LocalTableEntry *table, char *fname){
 	for(int i = 0; i < MAX_LOCAL_FILES; i++){
 		struct LocalTableEntry *entry = &table[i];
-		printf("Checking name: %s\n", entry->fname);
 		if(strcmp(entry->fname, fname) == 0){
-			printf("Found entry to remove at LFT[%d]\n", i);//debug
+			printf("Removed %s from LFT[%d]\n", fname, i);//debug
 			strcpy(entry->fname, "\0");
 			entry->handle = 0;
 			return 0;
 		}
 	}
-	printf("File to remove was not found in local table\n");//debug
+	printf("File %s was not found in local table. Unable to remove\n", fname);//debug
 	return -1;
 }
 
@@ -180,7 +186,7 @@ unsigned int ReadUInt(int index){
 	//ensure index in memory is a valid unsigned int location
 	
 	if(index > 12 || (index % 4) > 0){
-		printf("Invalid unsigned integer read\n");
+		printf("Invalid unsigned integer read:%d\n", index);
 		return 0;
 	}
 	
@@ -200,7 +206,7 @@ unsigned int ReadUInt(int index){
 void WriteUInt(int index, unsigned int value){
 	//ensure index in memory is a valid unsigned int location
 	if(index > 12 || (index % 4) > 0){
-		printf("Invalid unsigned integer write\n");
+		printf("Invalid unsigned integer write:%d\n", index);
 		return;
 	}
 	
@@ -291,6 +297,7 @@ int FreeSpaceAddress(int spaceSize){
 		}
 	}
 	//if no space is found return(-1)
+	printf("Could not find space of size %d in bitmap\n", spaceSize);
 	return -1;
 }
 
@@ -304,6 +311,7 @@ short int FindDirSpace(){
 		}
 	}
 	//if no space is available return -1
+	printf("No directory space available\n");
 	return -1;
 }
 
@@ -315,7 +323,7 @@ int ParseFileName(const char *str, char *name, char *extension){
 	//printf("Parsing File: %s\n", str);//debug
 	//ensure extension is given
 	if(dot == NULL){
-		printf("Invalid file name. File name must include extension\n");
+		printf("Invalid file name:%s, File name must include extension\n", str);
 		return -1;
 	}
 	
@@ -324,31 +332,27 @@ int ParseFileName(const char *str, char *name, char *extension){
 	const char *illegalChars = "/\\:*?\"|";
 	for(int i = 0; i < length; i++){
 		if(strchr(illegalChars, str[i]) != NULL) {
-			printf("Invalid file name. File name cannot contain /\\:*?\"|");
+			printf("Invalid file name:%s, File name cannot contain /\\:*?\"|",str);
 			return -1;
 		}
 	}
 	
 	//check for multiple dots
 	if(strchr(dot+1, '.') != NULL){
-		printf("Invalid file name. A file may have only 1 extension. Include a single \".\" character");
+		printf("Invalid file name:%s A file may have only 1 extension. Include a single \".\" character",str);
 		return -1;
 	}
 	
 	//validate lengths
 	if( strlen(dot + 1) > MAX_EXT_LEN){
-		printf("Invalid file name. Extension is too long. Three characters max");
+		printf("Invalid file name:%s Extension is too long. Three characters max\n", str);
 		return -1;
 	}
 	
 	if((dot - str) >= MAX_NAME_LEN){
-		printf("File name is too long. 21 characters max");
+		printf("File name:\"%s\" is too long. 21 characters max\n", str);
 		return -1;
 	}
-	
-	
-	
-
 	//copy file name into the name location
 	strncpy(name, str, (dot - str));
 	name[dot - str] = '\0';
@@ -363,7 +367,7 @@ int ParseFileName(const char *str, char *name, char *extension){
 int AddDirEntry(const char *fname, int fsize, int flocation){
 	short int entryLoc = FindDirSpace();
 	if(entryLoc < 0){
-		printf("Directory full. Could not add file");
+		printf("Directory full. Could not add %s\n", fname);
 		return -1;
 	}
 	
@@ -378,7 +382,7 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 	int valid = ParseFileName(fname, name, ext);
 
 	if(valid < 0){
-		printf("Could not add directory entry: Invalid file name.\n");
+		printf("Could not add directory entry: %s is invalid file name.\n", fname);
 		return -1;
 	}
 		
@@ -416,21 +420,21 @@ int AddDirEntry(const char *fname, int fsize, int flocation){
 }
 //helper function for printing a directory entry
 void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short int *size, short int *loc, short int *next){
-		for(int i = 0; i < MAX_NAME_LEN; i++){
-			name[i] = MEMORY[entryLoc + DIR_ENTRY_NAME + i];
-		}
-		//name[MAX_NAME_LEN] = '\0';
-		for(int i = 0; i < MAX_EXT_LEN; i++){
-			ext[i] = MEMORY[entryLoc + DIR_ENTRY_EXT + i];
-		}
-		//ext[MAX_EXT_LEN] = '\0';
-		//printf("Reading sints for gde at %d\n", entryLoc);//debug
-		*size = ReadSInt(entryLoc + DIR_ENTRY_SIZE);
-		*loc = ReadSInt(entryLoc + DIR_ENTRY_LOC);
-		*next = ReadSInt(entryLoc + DIR_ENTRY_NEXT);
-		return;
-		
+	for(int i = 0; i < MAX_NAME_LEN; i++){
+		name[i] = MEMORY[entryLoc + DIR_ENTRY_NAME + i];
 	}
+	//name[MAX_NAME_LEN] = '\0';
+	for(int i = 0; i < MAX_EXT_LEN; i++){
+		ext[i] = MEMORY[entryLoc + DIR_ENTRY_EXT + i];
+	}
+	//ext[MAX_EXT_LEN] = '\0';
+	//printf("Reading sints for gde at %d\n", entryLoc);//debug
+	*size = ReadSInt(entryLoc + DIR_ENTRY_SIZE);
+	*loc = ReadSInt(entryLoc + DIR_ENTRY_LOC);
+	*next = ReadSInt(entryLoc + DIR_ENTRY_NEXT);
+	return;
+	
+}
 
 //prints a directory entry at a given location. Returns the location of the next entry or 0 if last entry
 short int PrintDirEntry(int entryLoc){
@@ -451,12 +455,12 @@ int FindDirEntry(char *fname){
 	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
 	int valid = ParseFileName(fname, name, ext);
 	if(valid < 0){
-		printf("File name is not valid");
+		printf("File name:%s is not valid, no dir entry\n", fname);
 		return -1;
 	}
 	//printf("name: %s, ext: %s\n", name, ext);//debug
 	//iterate directory linked list to find the file
-	int entry = DIR_START;
+	int entry = ReadSInt(DIR_HEAD);
 	while(entry != 0){
 		unsigned char entryName[MAX_NAME_LEN];
 		unsigned char entryExt[MAX_EXT_LEN];
@@ -464,16 +468,10 @@ int FindDirEntry(char *fname){
 		short int loc;
 		short int next;
 		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
-		/*printf("ename: %s, e-ext: %s\n", entryName, entryExt);
-		for(int i = 0; i < MAX_NAME_LEN; i++){
-		//debug
-			printf(" %02X = %02X, ", name[i], entryName[i]);
-		}
-		printf("\n");*/
-				
+			
 		if(strcmp(entryName, name) == 0 && strcmp(entryExt, ext) == 0){
 			//if the entry matches the search criteria
-			printf("Found file at location: %d\n", entry);
+			printf("Found file in directory at location: %d\n", entry);
 			return entry;
 		}
 		entry = next;
@@ -485,16 +483,17 @@ int FindDirEntry(char *fname){
 
 //removes a file's entry from the directory. Returns 0 on success and -1 on fail
 int RemoveDirEntry(char *fname){
+	printf("removing %s from directory...\n", fname);//debug
 	//parse and validate fname
 	char name[MAX_NAME_LEN]; //= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
 	int valid = ParseFileName(fname, name, ext);
 	if(valid < 0){
-		printf("File name is not valid");
+		printf("File name: %s is not valid, couldnt remove from directory\n", fname);
 		return -1;
 	}
-	int entry = DIR_START;
-	int prev = DIR_START;
+	int entry = ReadSInt(DIR_HEAD);
+	int prev = ReadSInt(DIR_HEAD);
 	while(entry != 0){
 		unsigned char entryName[MAX_NAME_LEN];
 		unsigned char entryExt[MAX_EXT_LEN];
@@ -503,7 +502,7 @@ int RemoveDirEntry(char *fname){
 		short int next;
 		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
 				
-		if(memcmp(entryName, name, MAX_NAME_LEN) == 0 && memcmp(entryExt, ext, MAX_EXT_LEN) == 0){
+		if(strcmp(entryName, name) == 0 && strcmp(entryExt, ext) == 0){
 			//if the entry matches the search criteria
 			break;
 		}
@@ -511,7 +510,7 @@ int RemoveDirEntry(char *fname){
 		entry = next;
 	}
 	if(entry == 0){
-		printf("Requested file to delete does not exist\n");
+		printf("Could not remove %s from dir, does not exist\n", fname);
 		return -1;
 	}else{
 		//if we are removing the head entry make the next entry the head
@@ -537,15 +536,21 @@ int RemoveDirEntry(char *fname){
 		}
 		
 		//successful removal
+		printf("%s successfully removed from directory!\n", fname);//debug
 		return 0;
 	}
 }
 
 void PrintDir(){
 	//TODO: remove next for production
+	//get VCB information
+	int free = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
+	int total = ReadUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT);
+	printf("%d of %d Blocks are free:\n", free, total);
+	
 	printf("%-15s %-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address", "Next");
 	printf("---------------------------------------------------------------------\n");//perfect size
-	int entry = DIR_START;
+	int entry = ReadSInt(DIR_HEAD);
 	while(entry != 0){
 		unsigned char entryName[MAX_NAME_LEN];
 		unsigned char entryExt[MAX_EXT_LEN];
@@ -661,8 +666,8 @@ int Read(int hand, unsigned char *output){
 	}
 	
 	//get fcb from gft
-	int start = entry.fcb.firstBlockIndex * 2048;
-	int size = entry.fcb.fileSizeBlocks * 2048;
+	int start = entry.fcb.firstBlockIndex * BLOCK_SIZE_BYTES;
+	int size = entry.fcb.fileSizeBlocks * BLOCK_SIZE_BYTES;
 	
 	//strncpy into a sized array at file location and size
 	unsigned char buffer[size]; //block size in bytes
@@ -690,8 +695,8 @@ int Write(int hand, char *input){
 	}
 	
 	//get fcb from gft
-	int start = entry.fcb.firstBlockIndex * 2048;
-	int size = entry.fcb.fileSizeBlocks * 2048;
+	int start = entry.fcb.firstBlockIndex * BLOCK_SIZE_BYTES;
+	int size = entry.fcb.fileSizeBlocks * BLOCK_SIZE_BYTES;
 	
 	//strncpy into a sized array at file location and size
 	unsigned char buffer[size]; //block size in bytes
@@ -744,12 +749,11 @@ int Delete(char *fname){
 	//check global table for an instance
 	int exists = FindInGlobalTable(fname);
 	if(exists >= 0){
-		printf("File is open in some process, cannot be deleted\n");
+		printf("%s is open in some process, cannot be deleted\n", fname);
 		return -1;
 	}
 	//get file data from the directory
 	int entryLoc = FindDirEntry(fname);
-	
 	unsigned char name[MAX_NAME_LEN];
 	unsigned char ext[MAX_EXT_LEN];
 	short int size;
@@ -757,21 +761,31 @@ int Delete(char *fname){
 	short int next;
 	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);
 	
-	//clear the actural data from the file
-	unsigned char buffer[size*2048];
-	for(int i = 0; i < size*2048; i++){
-		buffer[i] = 0x00;
-	}
-	strcpy(&MEMORY[loc * 2048], buffer);
-	
 	//Remove file from directory
 	int removeRes = RemoveDirEntry(fname);
-	
+		
 	if(removeRes < 0){
-		printf("failed to remove file from directory, contents deleted\n");
+		printf("failed to remove %s from directory (res: %d), delete aborted\n", fname, removeRes);
 		return -1;
 	}
 	
+	//clear the actural data from the file
+	unsigned char buffer[size*BLOCK_SIZE_BYTES];
+	for(int i = 0; i < size*BLOCK_SIZE_BYTES; i++){
+		buffer[i] = 0x00;
+	}
+	strcpy(&MEMORY[loc * BLOCK_SIZE_BYTES], buffer);
+	
+	//update the vcb's bitmap and free block count
+	int current = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
+	WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, (current + size));
+	
+	for(int i = loc; i < (size + loc); i++){
+		WriteBit(i, 0);
+	}
+			
+	
+		
 	return 0;
 }
 
@@ -780,7 +794,7 @@ int main() {
 	
 	//initialize default values:
 	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT, 512);
-	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_SIZE, 2048);
+	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_SIZE, BLOCK_SIZE_BYTES);
 	WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, 503);
 	//Write the first 9 bits of the bitmap as in use
 	for(int i =0; i<9; i++){
@@ -795,23 +809,25 @@ int main() {
 	
 	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
 	
+	//shows bitmap
+	void Bitmap(){
+		for(int i = 0; i < 64 ; i++){
+			if(i % 8 == 0){
+				printf("\n");
+			} 
+			printf("%u",ReadBit(i));
+		}
+		printf("\n");
+	}
+	
 	//testing Create Function
 	int x = Create("world.txt", 20, localTable);
-	int y = Create("prog.c", 5, localTable);
-	
-	//shows bitmap
-	for(int i = 0; i < 64 ; i++){
-		if(i % 8 == 0){
-			printf("\n");
-		} 
-		printf("%u",ReadBit(i));
-	}
-	printf("\n\n");
+	int y = Create("p.c", 5, localTable);
+	int za = Create("niqndoewidnwodnwoiedjwoid.cs", 1, localTable);
 	
 	PrintDir();
 	
 	//Testing Open Function
-	
 	printf("\n\nOpen res:\nGFT0: %s, %d, %d, %d (expect world.txt, 20, 9, 1)\n LFT: %s, %d (expect world.txt,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
 
 		printf("\n\nOpen res2:\nGFT1: %s, %d, %d, %d (expect prog.c, 5, 29, 1)\n LFT: %s, %d (expect prog.c,1)\n\n", GLOBAL_FILE_TABLE[y].fname, GLOBAL_FILE_TABLE[y].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[y].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[y].instances, localTable[1].fname, localTable[1].handle);
@@ -820,14 +836,14 @@ int main() {
 	printf("File handles recieved: %d and %d\n", x, y);
 	
 	//Testing read write
-	unsigned char buffer[20 * 2048];
+	unsigned char buffer[20 * BLOCK_SIZE_BYTES];
 	Read(x, buffer);
 	printf("X initial read:%s\n", buffer); 
 	unsigned char buffls[] = "Hello World!";
 	unsigned char ytest[] = "Whether we wanted it or not weve stepped into war with the cabal on mars!\nSo lets get to taking out their command one by one...\n\n";
 	Write(x, buffls);
 	Write(y, ytest);
-	unsigned char yout[5 * 2048];
+	unsigned char yout[5 * BLOCK_SIZE_BYTES];
 	Read(x, buffer);
 	printf("X final read: %s\n", buffer);
 	Read(y, yout);
@@ -837,6 +853,13 @@ int main() {
 	printf("close res: %d\n", closeRes);
 	
 	printf("\n\nClose res:\nGFT0: %s, %d, %d, %d (expect , 0, 0, 0)\n LFT: %s, %d (expect ,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
+	
+	Delete("world.txt");
+	Read(x, buffer);
+	printf("X deleted read: %s\n", buffer);
+	Write(x, "hello world!");
+	
+	PrintDir();
 	
 	printf("\n");
 	return 0;
