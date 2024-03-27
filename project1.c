@@ -572,7 +572,7 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 	//search local process table for instance, if found -> error
 	for(int i = 0; i < MAX_LOCAL_FILES; i++){
 		if(localOpenFiles[i].fname == fname){
-			printf("Cannot open a file that is already open");
+			printf("Cannot open a file that is already open (%s)\n", fname);
 			return -1;
 		}
 	}
@@ -602,7 +602,7 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 		handle = AppendToGlobalTable(globalEntry);
 		//check for failed append
 		if(handle < 0){
-			printf("Failed to append entry to global table\n");
+			printf("Failed to append %s to global table, open aborted\n", fname);
 			return -1;
 		}
 	}
@@ -628,7 +628,8 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 	//ensure the file size is at least less than the free block count
 	int freeBlocks = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
 	if(size > freeBlocks){
-		printf("Could not Create File. Desired File Size is too big!\n");
+		printf("Could not Create File. Desired File Size of %d is too big!\n", size);
+		return -1;
 	}else{
 		//search the bitmap for a free space of corresponding size
 		int blockIndex = FreeSpaceAddress(size);
@@ -639,12 +640,16 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 			//TODO: maybe apply compaction...
 			return -1;
 		}else{
+			//create a directory entry with fname, start block, size
+			int addRes = AddDirEntry(name, size, blockIndex);
+			if(addRes < 0){
+				printf("Failed to add %s to directory, could not create\n", name);
+				return -1;
+			}
 			//if space exists mark it as used
 			for(int i = blockIndex; i < (size + blockIndex); i++){
 				WriteBit(i, 1);
 			}
-			//create a directory entry with fname, start block, size
-			AddDirEntry(name, size, blockIndex);
 			//update vcb free block count
 			WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, (freeBlocks - size));
 			//run the open function to give the fcb values
