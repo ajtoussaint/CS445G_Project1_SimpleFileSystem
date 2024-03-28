@@ -72,13 +72,25 @@ void CopyFCB(struct FileControlBlock *dest, struct FileControlBlock *src){
 #define MAX_LOCAL_FILES 8
 
 typedef struct {
-	char fname[MAX_NAME_LEN + MAX_EXT_LEN];
+	char fname[MAX_NAME_LEN + MAX_EXT_LEN + 1];//1 is for '.'
 	struct FileControlBlock fcb;
 	short int instances;
 }GlobalTableEntry;
 
 
 GlobalTableEntry GLOBAL_FILE_TABLE[MAX_GLOBAL_FILES];
+
+//files are defined for demonstration
+
+typedef struct{
+	char fname[MAX_NAME_LEN + MAX_EXT_LEN + 1];
+	int size;
+	char text[2048]; //in reality could be much larger, convenient for demonstration purposes only
+}File;
+
+File FILE1 = {"file1.txt", 32, "\"Hello World\" - File1"};
+
+File FILE2 = {"file2.c", 8, "This is the text for File2..."};
 
 
 //returns the index of a file's position in the global file table or -1 if not found
@@ -818,7 +830,7 @@ int Delete(char *fname){
 	return 0;
 }
 
-//shows first n bits of bitmap
+//shows first n bits of bitmap, used only in debugging
 void Bitmap(int n){
 	for(int i = 0; i < n ; i++){
 		if(i % 8 == 0){
@@ -829,6 +841,55 @@ void Bitmap(int n){
 	printf("\n");
 }
 
+void Process1(){
+	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
+	
+	printf("Begin Process 1\n");
+	
+	int file1 = Create(FILE1.fname, FILE1.size, localTable);
+	Write(file1, FILE1.text);
+	Close(file1, localTable);
+	
+	int file2 = Create(FILE2.fname, FILE2.size, localTable);
+	Write(file2, FILE2.text);
+	Close(file2, localTable);
+	
+	printf("End Process 1\n\n");
+	return;
+}
+
+void Process2(){
+	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
+	printf("\nBegin Process 2\n");
+	
+	int file1 = Open(FILE1.fname, localTable);
+	unsigned char f1out[FILE1.size * BLOCK_SIZE_BYTES];
+	Read(file1, f1out);
+	printf("Text read from file 1:\n\n%s\n\nEnd file 1 text\n", f1out);
+	Close(file1, localTable);
+	
+	printf("\nEnd Process 2\n");
+	return;	
+}
+
+void Process3(){
+	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
+	
+	printf("\nBegin Process 3\n");
+	
+	int file2 = Open(FILE2.fname, localTable);
+	unsigned char f2out[FILE2.size * BLOCK_SIZE_BYTES];
+	Read(file2, f2out);
+	printf("Text read from file 2:\n\n%s\n\nEnd file 2 text\n", f2out);
+	Close(file2, localTable);
+	
+	//CS445G requirement
+	Delete("file2.c");
+	printf("File 2 deleted\n");
+	
+	printf("\nEnd Process 3\n");
+	return;
+}
 
 
 int main() {
@@ -850,14 +911,20 @@ int main() {
 	
 	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n\n", num, size, free);
 	
-	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};	
-	
 	printf("Initial Directory state:\n");
 	PrintDir();
 	
-	printf("Beginning Process 1\n");
+	Process1();
 	
+	printf("Directory after process 1:\n");
+	PrintDir();
 	
+	Process2();
+
+	Process3();	
+	
+	printf("Directory after process 2 and process 3:\n");
+	PrintDir();
 	
 	printf("\n");
 	return 0;
