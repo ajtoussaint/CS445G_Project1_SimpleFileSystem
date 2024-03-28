@@ -1,3 +1,5 @@
+/* A very inefficient program to demonstrate how pthreads can improve efficiency*/
+
 #include <stdio.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -8,8 +10,8 @@
 //global data
 int sum; 
 #define arrsize 8 //took 65s to get 64 size the slow way vs 63
-unsigned char array[arrsize] = {'a'};
-unsigned char key[10] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
+unsigned char array[arrsize] = {'0','0','0','0','0','0','0','\0'};
+unsigned char key[10] = {'z', '1', '2', '3', '4', '5', '6', '7', '8', '9'};
 
 pthread_mutex_t mutex[arrsize] = PTHREAD_MUTEX_INITIALIZER;
 
@@ -17,13 +19,13 @@ void *adder(){
 	pthread_t tid = pthread_self();
 	int num = ((unsigned long)tid % 10);
 	printf("Thread %d initialized!\n", num);
-	while(strchr(array,'a') > 0)
+	while(strchr(array,'0') != NULL)
 	{
 		for(int i = 0; i < arrsize; i++){
 			printf("Thread %d waits for mutex to check %d\n", num, i);
 			pthread_mutex_lock(&mutex[i]);
 			printf("Thread %d seizes mutex to check %d\n", num, i);
-			if(array[i] == 'a'){
+			if(array[i] == '0'){
 				printf("Thread %d found space at arr[%d]\n", num, i);
 				usleep(500);//force race condition
 				array[i] = key[num];
@@ -44,13 +46,14 @@ void *backadder(){
 	pthread_t tid = pthread_self();
 	int num = ((unsigned long)tid % 10);
 	printf("Thread %d initialized!\n", num);
-	while(strchr(array,'a') > 0)
+	while(strchr(array,'0') != NULL)
 	{
 		for(int i = arrsize; i >= 0; i--){
 			printf("Thread %d waits for mutex to check %d\n", num, i);
 			pthread_mutex_lock(&mutex[i]);
 			printf("Thread %d seizes mutex to check %d\n", num, i);
-			if(array[i] == 'a'){
+			printf("arr: %s\n", array);
+			if(array[i] == '0'){
 				printf("Thread %d found space at arr[%d]\n", num, i);
 				usleep(500);//force race condition
 				array[i] = key[num];
@@ -69,7 +72,6 @@ void *backadder(){
 
 int main(int argc, char *argv[]){
 	clock_t start = clock();
-	
 	pthread_t tid1;
 	pthread_t tid2;
 	pthread_attr_t attr; //thread attributes
@@ -81,8 +83,8 @@ int main(int argc, char *argv[]){
 		fprintf(stderr, "usage:./a.out <positive integer?>\n");
 		exit(0);
 	}
-	printf("Res: %d\n", strchr(array, 'a'));
-	/*//creat our threads
+
+	//creat our threads
 	printf("Initial arr: %s\n", array);
 	pthread_create(&tid1, &attr, adder, argv[1]);
 	pthread_create(&tid2, &attr, backadder, argv[1]);
@@ -94,7 +96,7 @@ int main(int argc, char *argv[]){
 	printf("Final arr: %s\n", array);
 	clock_t end = clock();
 	double time = ((double)(end - start))/CLOCKS_PER_SEC;
-	printf("Time: %d\n", (int)(time * 1000)); */
+	printf("Time: %d\n", (int)(time * 1000)); 
 	return 0;
 }
 
