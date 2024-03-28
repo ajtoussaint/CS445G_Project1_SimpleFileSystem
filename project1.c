@@ -99,12 +99,12 @@ int FindInGlobalTable(char *fname){
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
 		if(strcmp(entry->fname, fname) == 0){
 			//if the entry is found set its values to the default
-			printf("Found entry at GFT[%d]\n", i);//debug
+			printf("Found %s at Global File Table [%d]\n", fname, i);//debug
 			return i;
 		}
 	}
 	//if the loop is completed the entry was not found
-	printf("file %s was not found in global table\n", fname);//debug
+	//printf("file %s was not found in global table\n", fname);//debug
 	return -1;
 }
 
@@ -123,7 +123,7 @@ int AppendToGlobalTable(GlobalTableEntry gte){
 			strcpy(entry->fname, gte.fname);
 			CopyFCB(&(entry->fcb), &gte.fcb);
 			entry->instances = gte.instances;
-			printf("Added %s to GFT at location %d\n", gte.fname, i);//debug
+			printf("Added %s to Global File Table at location [%d]\n", gte.fname, i);//debug
 			return i;
 		}
 	}
@@ -146,12 +146,12 @@ int RemoveFromGlobalTable(char *fname){
 			entry->fcb.fileSizeBlocks = 0;
 			entry->fcb.firstBlockIndex = 0;
 			entry->instances = 0;
-			printf("Removed %s from GFT[%d]\n", fname, i);//debug
+			printf("Removed %s from Global File Table [%d]\n", fname, i);//debug
 			return 0;
 		}
 	}
 	//if the loop is completed the entry was not found
-	printf("%s successfully removed from GFT\n", fname);
+	printf("%s was not removed from Globabl File Table, file not found\n", fname);
 	return -1;
 }
 
@@ -165,25 +165,25 @@ int FindInLocalTable(struct LocalTableEntry *table, char *fname){
 	for(int i = 0; i < MAX_LOCAL_FILES; i++){
 		struct LocalTableEntry *entry = &table[i];
 		if(strcmp(entry->fname, fname) == 0){
-			printf("Found entry at LFT[%d]\n", i);//debug
+			printf("Found entry at Local File Table [%d]\n", i);//debug
 			return i;
 		}
 	}
-	printf("File %s was not found in local table\n", fname);//debug
+	//printf("File %s was not found in Local File Table\n", fname);//debug
 	return -1;
 }
 
 int AppendToLocalTable(struct LocalTableEntry *table, struct LocalTableEntry lte){
 	//ensure no duplicate
 	if(FindInLocalTable(table, lte.fname) > 0){
-		printf("File %s already exists in local table, cannot add a duplicate\n", lte.fname);
+		printf("File %s already exists in local file table, cannot add a duplicate\n", lte.fname);
 		return -1;
 	}
 	
 	for(int i = 0; i < MAX_LOCAL_FILES; i++){
 		struct LocalTableEntry *entry = &table[i];
 		if(entry -> fname[0] == '\0'){
-			printf("Inserting at local table [%d]\n", i);//debug
+			printf("Inserted %s at local file table [%d]\n", lte.fname, i);//debug
 			strcpy(entry->fname, lte.fname);
 			entry->handle = lte.handle;
 			return i;
@@ -197,13 +197,13 @@ int RemoveFromLocalTable(struct LocalTableEntry *table, char *fname){
 	for(int i = 0; i < MAX_LOCAL_FILES; i++){
 		struct LocalTableEntry *entry = &table[i];
 		if(strcmp(entry->fname, fname) == 0){
-			printf("Removed %s from LFT[%d]\n", fname, i);//debug
+			printf("Removed %s from Local File Table [%d]\n", fname, i);//debug
 			strcpy(entry->fname, "\0");
 			entry->handle = 0;
 			return 0;
 		}
 	}
-	printf("File %s was not found in local table. Unable to remove\n", fname);//debug
+	//printf("File %s was not found in local table. Unable to remove\n", fname);//debug
 	return -1;
 }
 
@@ -441,13 +441,13 @@ int FindDirEntry(char *fname){
 			
 		if(strcmp(entryName, name) == 0 && strcmp(entryExt, ext) == 0){
 			//if the entry matches the search criteria
-			printf("Found file in directory at location: %d\n", entry);
+			//printf("Found file in directory at location: %d\n", entry);//debug
 			return entry;
 		}
 		entry = next;
 	}
 	//if file is not found return -1
-	printf("%s not found in directory\n", fname);
+	//printf("%s not found in directory\n", fname);//debug
 	return -1;
 }
 
@@ -506,14 +506,14 @@ int AddDirEntry(char *fname, int fsize, int flocation){
 		//update the tail to be the new entry
 		WriteSInt(DIR_TAIL, entryLoc);
 	}
-	
+	printf("File %s was added to directory at location:%d\n", name, entryLoc);
 	return 0;
 }
 
 
 //removes a file's entry from the directory. Returns 0 on success and -1 on fail
 int RemoveDirEntry(char *fname){
-	printf("removing %s from directory...\n", fname);//debug
+	//printf("removing %s from directory...\n", fname);//debug
 	//parse and validate fname
 	char name[MAX_NAME_LEN]; //= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
 	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
@@ -649,6 +649,7 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 	AppendToLocalTable(localOpenFiles, lte);
 	
 	//return the handle
+	printf("Opened file %s\n", fname);
 	return handle;
 }
 
@@ -686,6 +687,9 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 			}
 			//update vcb free block count
 			WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, (freeBlocks - size));
+			
+			printf("Created file %s\n", name);
+			
 			//run the open function to give the fcb values
 			int handle = Open(name, localOpenFiles);
 			return handle;
@@ -754,6 +758,9 @@ int Write(int hand, char *input){
 	//strncpy into appropriate space
 	strcpy(&MEMORY[start], buffer);	
 	//return 0
+	
+	printf("Wrote: %s to file %s\n", buffer, entry.fname);
+	
 	return 0;
 }
 
@@ -782,6 +789,8 @@ int Close(int handle, struct LocalTableEntry *localOpenFiles){
 	if(entry->instances < 1){
 		RemoveFromGlobalTable(name);
 	} 
+	
+	printf("Closed file %s\n", name);
 	
 	return 0;
 }
@@ -825,7 +834,7 @@ int Delete(char *fname){
 		WriteBit(i, 0);
 	}
 			
-	
+	printf("Deleted file %s\n", fname);
 		
 	return 0;
 }
@@ -885,7 +894,6 @@ void Process3(){
 	
 	//CS445G requirement
 	Delete("file2.c");
-	printf("File 2 deleted\n");
 	
 	printf("\nEnd Process 3\n");
 	return;
