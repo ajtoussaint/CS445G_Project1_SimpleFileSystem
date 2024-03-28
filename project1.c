@@ -4,13 +4,86 @@
 #include <unistd.h>
 //used for parsing file names
 #include <string.h>
+//pthreads
+#include <pthread.h>
+
+//2k blocks
+#define BLOCK_SIZE_BYTES 2048
+
+//512 blocks
+#define NUM_BLOCKS 512
 
 //allocate 1MB of memory
 #define STORAGE_LEN 1048576
 unsigned char MEMORY[STORAGE_LEN] = {0}; // each array index represents a byte
-//2k blocks
-#define BLOCK_SIZE_BYTES 2048
 
+
+//mutex locks for each block of memory
+pthread_mutex_t mutexVector[NUM_BLOCKS] = PTHREAD_MUTEX_INITIALIZER;
+//locks the mutex array so that a process may seize all the blocks of a file without chance for deadlock
+pthread_mutex_t memoryMutex = PTHREAD_MUTEX_INITIALIZER;
+
+void seizenMemory(int start, int end){
+	if(start < 0 || end >= NUM_BLOCKS){
+		printf("tried to hold invalid memory location\n");
+		return;
+	}
+	pthread_mutex_lock(&memoryMutex);
+	for(int i = start; i < end; i++){
+		pthread_mutex_lock(&mutexVector[i]);
+	}
+	pthread_mutex_unlock(&memoryMutex);
+	//printf("Memory seized from %d to %d\n", start, end);
+	return;
+}
+
+void seizeMemory(int index){
+	if(index < 0 || index >= NUM_BLOCKS){
+		printf("tried to hold invalid memory location\n");
+		return;
+	}
+	pthread_mutex_lock(&memoryMutex);
+	
+	pthread_mutex_lock(&mutexVector[index]);
+	
+	pthread_mutex_unlock(&memoryMutex);
+	
+	//printf("Memory seized at %d\n", index);
+	
+	return;
+}
+
+void releasenMemory(int start, int end){
+	if(start < 0 || end >= NUM_BLOCKS){
+		printf("tried to release invalid memory location\n");
+		return;
+	}
+	pthread_mutex_lock(&memoryMutex);
+	for(int i = start; i < end; i++){
+		pthread_mutex_unlock(&mutexVector[i]);
+	}
+	pthread_mutex_unlock(&memoryMutex);
+
+	//printf("Memory released from %d to %d\n", start, end);
+
+	return;	
+}
+
+void releaseMemory(int index){
+	if(index < 0 || index >= NUM_BLOCKS){
+		printf("tried to release invalid memory location\n");
+		return;
+	}
+	pthread_mutex_lock(&memoryMutex);
+	
+	pthread_mutex_unlock(&mutexVector[index]);
+	
+	pthread_mutex_unlock(&memoryMutex);
+	
+	//printf("Memory released at %d\n", index);
+	
+	return;
+}
 //variables store the memory index of the value
 struct VolumeControlBlock{
 	int BLOCK_COUNT;
@@ -32,6 +105,9 @@ const unsigned int BITMAP_NUM_BITS = 512;
 
 
 //second-ninth data block (2048 - 16352) is reserved for the directory
+const unsigned int VCB_BLOCK = 0;
+const unsigned int DIR_BLOCK_START = 1;
+const unsigned int DIR_BLOCK_END = 9; //incremented for eclusive loops "i <DIR_BLOCK_END"
 	
 	//first 32 bytes (2048 - 2079) are used to store head and tail for linked list as short ints
 const unsigned int DIR_HEAD = 2076;
@@ -79,6 +155,8 @@ typedef struct {
 
 
 GlobalTableEntry GLOBAL_FILE_TABLE[MAX_GLOBAL_FILES];
+//mutex lock for the global file table
+pthread_mutex_t gftMutex = PTHREAD_MUTEX_INITIALIZER;
 
 //files are defined for demonstration
 
@@ -95,11 +173,13 @@ File FILE2 = {"file2.c", 8, "This is the text for File2..."};
 
 //returns the index of a file's position in the global file table or -1 if not found
 int FindInGlobalTable(char *fname){
+
 	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
 		if(strcmp(entry->fname, fname) == 0){
 			//if the entry is found set its values to the default
 			printf("Found %s at Global File Table [%d]\n", fname, i);//debug
+			pthread_mutex_unlock(&gftMutex);
 			return i;
 		}
 	}
@@ -112,10 +192,9 @@ int FindInGlobalTable(char *fname){
 int AppendToGlobalTable(GlobalTableEntry gte){
 	//ensure no duplicate entries
 	if(FindInGlobalTable(gte.fname) > 0){
-		printf("File %s already exists in global table, cannot append\n", gte.fname);
+		printf("%s already exists in global table, cannot append\n", gte.fname);
 		return -1;
 	}	
-	
 	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
 		//check if the space is available
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
@@ -133,6 +212,7 @@ int AppendToGlobalTable(GlobalTableEntry gte){
 
 
 int RemoveFromGlobalTable(char *fname){
+
 	for(int i = 0; i < MAX_GLOBAL_FILES; i++){
 		GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[i];
 		if(strcmp(entry->fname, fname) == 0){
@@ -176,7 +256,7 @@ int FindInLocalTable(struct LocalTableEntry *table, char *fname){
 int AppendToLocalTable(struct LocalTableEntry *table, struct LocalTableEntry lte){
 	//ensure no duplicate
 	if(FindInLocalTable(table, lte.fname) > 0){
-		printf("File %s already exists in local file table, cannot add a duplicate\n", lte.fname);
+		printf("%s already exists in local file table, cannot add a duplicate\n", lte.fname);
 		return -1;
 	}
 	
@@ -271,6 +351,7 @@ void WriteSInt(int index, short int value){
 
 //helper function to read bitmap
 short int ReadBit(int bitIndex){
+
 	//get the correct byte
 	unsigned char byte = MEMORY[VOLUME_CONTROL_BLOCK.BITMAP_START + bitIndex/8];
 	//check the bit
@@ -283,7 +364,9 @@ short int ReadBit(int bitIndex){
 
 //helper function to write to bitmap
 void WriteBit(int bitIndex, short int value){
+
 	short int current = ReadBit(bitIndex);
+
 	if(current != value){
 		//get the relevant byte
 		unsigned char byte = MEMORY[VOLUME_CONTROL_BLOCK.BITMAP_START + bitIndex/8];
@@ -292,6 +375,7 @@ void WriteBit(int bitIndex, short int value){
 		//write to the array
 		MEMORY[VOLUME_CONTROL_BLOCK.BITMAP_START + bitIndex/8] = byte;
 	}
+	
 }
 
 //function to find first space in the bitmap
@@ -300,6 +384,7 @@ void WriteBit(int bitIndex, short int value){
 int FreeSpaceAddress(int spaceSize){
 	int length = 0;
 	int index = -1;
+	
 	for(int i = 0; i<BITMAP_NUM_BITS; i++){
 		short int currentBit = ReadBit(i);
 		//if the bit shows an open space
@@ -329,13 +414,16 @@ int FreeSpaceAddress(int spaceSize){
 //find the first open space for a new entry in the directory
 //returns the index of the start of the space for the entry or -1 to indicate full directory
 short int FindDirSpace(){
+	seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	for(short int i = DIR_START; i<(DIR_START + DIR_SIZE); i +=DIR_ENTRY_LEN ){
 		if(MEMORY[i] == 0x00){
 			//printf("Found space in directory at: %d\n", i);//debug
+			releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 			return i;
 		}
 	}
 	//if no space is available return -1
+	releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	printf("No directory space available\n");
 	return -1;
 }
@@ -390,6 +478,7 @@ int ParseFileName(const char *str, char *name, char *extension){
 
 //helper function for printing a directory entry
 void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short int *size, short int *loc, short int *next){
+		
 	for(int i = 0; i < MAX_NAME_LEN; i++){
 		name[i] = MEMORY[entryLoc + DIR_ENTRY_NAME + i];
 	}
@@ -402,6 +491,7 @@ void GetDirEntry(int entryLoc, unsigned char *name, unsigned char *ext, short in
 	*size = ReadSInt(entryLoc + DIR_ENTRY_SIZE);
 	*loc = ReadSInt(entryLoc + DIR_ENTRY_LOC);
 	*next = ReadSInt(entryLoc + DIR_ENTRY_NEXT);
+		
 	return;
 	
 }
@@ -421,7 +511,7 @@ short int PrintDirEntry(int entryLoc){
 //returns the memory location of a files directory entry based on name or -1 if it is not found/invalid name
 int FindDirEntry(char *fname){
 	//parse and validate fname
-	char name[MAX_NAME_LEN]; //= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char name[MAX_NAME_LEN]; 
 	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
 	int valid = ParseFileName(fname, name, ext);
 	if(valid < 0){
@@ -430,6 +520,7 @@ int FindDirEntry(char *fname){
 	}
 	//printf("name: %s, ext: %s\n", name, ext);//debug
 	//iterate directory linked list to find the file
+	seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	int entry = ReadSInt(DIR_HEAD);
 	while(entry != 0){
 		unsigned char entryName[MAX_NAME_LEN];
@@ -442,12 +533,14 @@ int FindDirEntry(char *fname){
 		if(strcmp(entryName, name) == 0 && strcmp(entryExt, ext) == 0){
 			//if the entry matches the search criteria
 			//printf("Found file in directory at location: %d\n", entry);//debug
+			releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 			return entry;
 		}
 		entry = next;
 	}
 	//if file is not found return -1
 	//printf("%s not found in directory\n", fname);//debug
+	releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	return -1;
 }
 
@@ -467,7 +560,7 @@ int AddDirEntry(char *fname, int fsize, int flocation){
 	//input the file details at the entry location
 
 	//parsing name and extension from fname
-	char name[MAX_NAME_LEN]; //= {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+	char name[MAX_NAME_LEN]; 
 	char ext[MAX_EXT_LEN] = {0x00, 0x00, 0x00, 0x00};
 	
 	int valid = ParseFileName(fname, name, ext);
@@ -476,6 +569,8 @@ int AddDirEntry(char *fname, int fsize, int flocation){
 		printf("Could not add directory entry: %s is invalid file name.\n", fname);
 		return -1;
 	}
+	
+	seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 		
 	//write name
 	//printf("Writing name: %s\nto location: %d\n", name, (entryLoc + DIR_ENTRY_NAME));//debug
@@ -506,7 +601,10 @@ int AddDirEntry(char *fname, int fsize, int flocation){
 		//update the tail to be the new entry
 		WriteSInt(DIR_TAIL, entryLoc);
 	}
-	printf("File %s was added to directory at location:%d\n", name, entryLoc);
+	
+	releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
+	
+	printf("%s was added to directory at location:%d\n", name, entryLoc);
 	return 0;
 }
 
@@ -522,8 +620,12 @@ int RemoveDirEntry(char *fname){
 		printf("File name: %s is not valid, couldnt remove from directory\n", fname);
 		return -1;
 	}
+	
+	seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
+	
 	int entry = ReadSInt(DIR_HEAD);
 	int prev = ReadSInt(DIR_HEAD);
+
 	while(entry != 0){
 		unsigned char entryName[MAX_NAME_LEN];
 		unsigned char entryExt[MAX_EXT_LEN];
@@ -541,6 +643,7 @@ int RemoveDirEntry(char *fname){
 	}
 	if(entry == 0){
 		printf("Could not remove %s from dir, does not exist\n", fname);
+		releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 		return -1;
 	}else{
 		//if we are removing the head entry make the next entry the head
@@ -565,6 +668,8 @@ int RemoveDirEntry(char *fname){
 			MEMORY[entry + i] = 0x00;
 		}
 		
+		releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
+		
 		//successful removal
 		printf("%s successfully removed from directory!\n", fname);//debug
 		return 0;
@@ -573,6 +678,7 @@ int RemoveDirEntry(char *fname){
 
 void PrintDir(){
 	//TODO: remove next for production
+	seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	//get VCB information
 	int free = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
 	int total = ReadUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT);
@@ -593,6 +699,9 @@ void PrintDir(){
 		
 		entry = next;
 	}
+	
+	releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
+	return;
 }
 
 
@@ -609,14 +718,17 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 	
 	struct FileControlBlock fcb;
 	int handle = -1;
-
+	
+	pthread_mutex_lock(&gftMutex);
 	//Search the GFT for an instance of the file
 	handle = FindInGlobalTable(fname);
 	if(handle > 0){
+
 		//get fcb from global table
 		CopyFCB(&fcb, &GLOBAL_FILE_TABLE[handle].fcb);
 		//increment instances in GFT
 		GLOBAL_FILE_TABLE[handle].instances++;
+		pthread_mutex_unlock(&gftMutex);
 	}else{
 		//else create a new FCB for the file based on directory info
 		int dirEntry = FindDirEntry(fname);
@@ -625,15 +737,24 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 			printf("Cannot open %s, file not in directory\n", fname);
 			return -1;
 		}
+		
+		seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
+		
 		//printf("reading open at %d\n", dirEntry); //DEBGU
 		fcb.fileSizeBlocks = ReadSInt(dirEntry + DIR_ENTRY_SIZE);
 		fcb.firstBlockIndex = ReadSInt(dirEntry + DIR_ENTRY_LOC);
+		
+		releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
+		
 		//add the entry to the GFT and get the index
 		GlobalTableEntry globalEntry;
 		strcpy(globalEntry.fname, fname);
 		CopyFCB(&globalEntry.fcb, &fcb);
 		globalEntry.instances = 1;
+		
 		handle = AppendToGlobalTable(globalEntry);
+		pthread_mutex_unlock(&gftMutex);
+		
 		//check for failed append
 		if(handle < 0){
 			printf("Failed to append %s to global table, open aborted\n", fname);
@@ -649,7 +770,7 @@ int Open(char *fname, struct LocalTableEntry *localOpenFiles){
 	AppendToLocalTable(localOpenFiles, lte);
 	
 	//return the handle
-	printf("Opened file %s\n", fname);
+	printf("Opened %s\n", fname);
 	return handle;
 }
 
@@ -661,8 +782,12 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 		return -1;
 	}	
 	//ensure the file size is at least less than the free block count
+	seizeMemory(VCB_BLOCK);
 	int freeBlocks = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
+
+	
 	if(size > freeBlocks){
+		releaseMemory(VCB_BLOCK);
 		printf("Could not Create File. Desired File Size of %d is too big!\n", size);
 		return -1;
 	}else{
@@ -670,25 +795,27 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 		int blockIndex = FreeSpaceAddress(size);
 		//printf("blockIndex is %d\n", blockIndex);//debug shows the index of the first space found
 		if(blockIndex < 0){
-			//if no space exists error (for now)
+			releaseMemory(VCB_BLOCK);
 			printf("There is not a large enough space available for that file\n");
-			//TODO: maybe apply compaction...
 			return -1;
 		}else{
 			//create a directory entry with fname, start block, size
 			int addRes = AddDirEntry(name, size, blockIndex);
 			if(addRes < 0){
+				releaseMemory(VCB_BLOCK);
 				printf("Failed to add %s to directory, could not create\n", name);
 				return -1;
 			}
+			
 			//if space exists mark it as used
 			for(int i = blockIndex; i < (size + blockIndex); i++){
 				WriteBit(i, 1);
 			}
 			//update vcb free block count
 			WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, (freeBlocks - size));
+			releaseMemory(VCB_BLOCK);
 			
-			printf("Created file %s\n", name);
+			printf("Created %s\n", name);
 			
 			//run the open function to give the fcb values
 			int handle = Open(name, localOpenFiles);
@@ -700,9 +827,10 @@ int Create(char *name, short int size, struct LocalTableEntry *localOpenFiles){
 
 int Read(int hand, unsigned char *output){
 	//search gft for handle based on name
-		//if not found err 
-	
+
+	pthread_mutex_lock(&gftMutex);
 	GlobalTableEntry entry = GLOBAL_FILE_TABLE[hand];
+	pthread_mutex_unlock(&gftMutex);
 	if(entry.fname[0] == '\0' || entry.fcb.firstBlockIndex == 0){
 		printf("Could not find file to read, bad handle\n");
 		return -1;
@@ -715,7 +843,9 @@ int Read(int hand, unsigned char *output){
 	//strncpy into a sized array at file location and size
 	unsigned char buffer[size]; //block size in bytes
 	
+	seizenMemory(start / BLOCK_SIZE_BYTES, (start + size)/BLOCK_SIZE_BYTES);
 	strncpy(buffer, &MEMORY[start], size);
+	releasenMemory(start / BLOCK_SIZE_BYTES, (start + size)/BLOCK_SIZE_BYTES);
 	
 	//add null terminator if not found
 	if(strchr(buffer, '\0') < 0){
@@ -728,10 +858,10 @@ int Read(int hand, unsigned char *output){
 
 int Write(int hand, char *input){
 	//search gft and check name
-	
-	//get fcb
-	
+	pthread_mutex_lock(&gftMutex);
 	GlobalTableEntry entry = GLOBAL_FILE_TABLE[hand];
+	pthread_mutex_unlock(&gftMutex);
+
 	if(entry.fname[0] == '\0' || entry.fcb.firstBlockIndex == 0){
 		printf("Could not find file to write, bad handle\n");
 		return -1;
@@ -755,21 +885,23 @@ int Write(int hand, char *input){
 		buffer[size - 1] = '\0';
 	}
 
+	seizenMemory(start / BLOCK_SIZE_BYTES, (start + size)/BLOCK_SIZE_BYTES);
 	//strncpy into appropriate space
 	strcpy(&MEMORY[start], buffer);	
-	//return 0
+	releasenMemory(start / BLOCK_SIZE_BYTES, (start + size)/BLOCK_SIZE_BYTES);
 	
-	printf("Wrote: %s to file %s\n", buffer, entry.fname);
+	printf("Wrote: %s to %s\n", buffer, entry.fname);
 	
 	return 0;
 }
 
 int Close(int handle, struct LocalTableEntry *localOpenFiles){
 	//search gft for entry
-		//if not found error
-	//if found get the name
+	pthread_mutex_lock(&gftMutex);
 	GlobalTableEntry *entry = &GLOBAL_FILE_TABLE[handle];
+
 	if(entry->fname[0] == '\0' || entry->fcb.firstBlockIndex == 0){
+		pthread_mutex_unlock(&gftMutex);
 		printf("Could not find file to close, bad handle\n");
 		return -1;
 	}
@@ -780,6 +912,7 @@ int Close(int handle, struct LocalTableEntry *localOpenFiles){
 	//remove from local file table
 	int res = RemoveFromLocalTable(localOpenFiles, name);
 	if(res < 0){
+		pthread_mutex_unlock(&gftMutex);
 		printf("error removing file from local table\n");
 		return -1;
 	}	
@@ -788,16 +921,19 @@ int Close(int handle, struct LocalTableEntry *localOpenFiles){
 	//if instances is 0 remove from global table
 	if(entry->instances < 1){
 		RemoveFromGlobalTable(name);
+		printf("Closed last instance of %s\n", name);
 	} 
 	
 	printf("Closed file %s\n", name);
-	
+	pthread_mutex_unlock(&gftMutex);
 	return 0;
 }
 
 int Delete(char *fname){
 	//check global table for an instance
 	int exists = FindInGlobalTable(fname);
+
+
 	if(exists >= 0){
 		printf("%s is open in some process, cannot be deleted\n", fname);
 		return -1;
@@ -809,8 +945,10 @@ int Delete(char *fname){
 	short int size;
 	short int loc;
 	short int next;
-	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);
 	
+	seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
+	GetDirEntry(entryLoc, name, ext, &size, &loc, &next);
+	releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	//Remove file from directory
 	int removeRes = RemoveDirEntry(fname);
 		
@@ -824,15 +962,23 @@ int Delete(char *fname){
 	for(int i = 0; i < size*BLOCK_SIZE_BYTES; i++){
 		buffer[i] = 0x00;
 	}
+	
+	seizenMemory(loc, loc + size);
 	strcpy(&MEMORY[loc * BLOCK_SIZE_BYTES], buffer);
+	releasenMemory(loc, loc + size);
 	
 	//update the vcb's bitmap and free block count
 	int current = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
+	
+	
+	seizeMemory(VCB_BLOCK);
 	WriteUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS, (current + size));
 	
 	for(int i = loc; i < (size + loc); i++){
 		WriteBit(i, 0);
 	}
+	
+	releaseMemory(VCB_BLOCK);
 			
 	printf("Deleted file %s\n", fname);
 		
@@ -850,7 +996,7 @@ void Bitmap(int n){
 	printf("\n");
 }
 
-void Process1(){
+void *Process1(){
 	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
 	
 	printf("Begin Process 1\n");
@@ -864,10 +1010,10 @@ void Process1(){
 	Close(file2, localTable);
 	
 	printf("End Process 1\n\n");
-	return;
+	pthread_exit(0);
 }
 
-void Process2(){
+void *Process2(){
 	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
 	printf("\nBegin Process 2\n");
 	
@@ -878,10 +1024,10 @@ void Process2(){
 	Close(file1, localTable);
 	
 	printf("\nEnd Process 2\n");
-	return;	
+	pthread_exit(0);
 }
 
-void Process3(){
+void *Process3(){
 	struct LocalTableEntry localTable[MAX_LOCAL_FILES] = {0};
 	
 	printf("\nBegin Process 3\n");
@@ -896,12 +1042,13 @@ void Process3(){
 	Delete("file2.c");
 	
 	printf("\nEnd Process 3\n");
-	return;
+	pthread_exit(0);
 }
 
 
 int main() {
 	
+	seizeMemory(VCB_BLOCK);
 	//initialize default values:
 	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT, 512);
 	WriteUInt(VOLUME_CONTROL_BLOCK.BLOCK_SIZE, BLOCK_SIZE_BYTES);
@@ -916,229 +1063,37 @@ int main() {
 	unsigned int num = ReadUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT);	
 	unsigned int size = ReadUInt(VOLUME_CONTROL_BLOCK.BLOCK_SIZE);	
 	unsigned int free = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);	
+	releaseMemory(VCB_BLOCK);
 	
 	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n\n", num, size, free);
 	
+	//pthreads setup:
+	pthread_t tid[3];
+	pthread_attr_t attr;
+	pthread_attr_init(&attr);
+		
 	printf("Initial Directory state:\n");
 	PrintDir();
 	
-	Process1();
+	pthread_create(&tid[0], &attr, Process1, NULL);
+	pthread_join(tid[0], NULL);
 	
 	printf("Directory after process 1:\n");
 	PrintDir();
 	
-	Process2();
+	pthread_create(&tid[1], &attr, Process2, NULL);
 
-	Process3();	
+	pthread_create(&tid[2], &attr, Process3, NULL);
 	
+
+	pthread_join(tid[1], NULL);
+	pthread_join(tid[2], NULL);
+
 	printf("Directory after process 2 and process 3:\n");
+	
 	PrintDir();
 	
 	printf("\n");
 	return 0;
 }
 
-/*//testing type punning
-	unsigned char array[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,};
-	unsigned int value = 0;
-	
-	//testing array input
-	array[6] = 1;
-	array[7] = 255;
-	
-	for (int i = 0; i<4; i++) {
-		value = (value << 8) | array[i];
-	}
-	
-	printf("Integer: %u\n", value);
-	
-	for (int i = 4; i<8; i++) {
-		value = (value << 8) | array[i];
-	}
-	
-	printf("Integer2: %u\n", value);*/
-	
-//testing read func
-	/*unsigned char array[8] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
-	unsigned int value = 0;
-	value = ReadUIntFromArray(array, 0);
-	printf("Value: %u\n", value);
-	value = ReadUIntFromArray(array, 4);
-	printf("Value2: %u\n", value);*/
-	
-//testing writing
-	/*unsigned char array[4] = {0x00, 0x00, 0x00, 0x00};
-	array[2] = 'a';
-	printf("Initial Values: %c, %c, %c, %c", array[0], array[1], array[2], array[3]);
-	unsigned int num = 217;
-	WriteUIntToArray(array,0,num);
-	printf("Final Values: %c, %c, %c, %c\n", array[0], array[1], array[2], array[3]);
-	unsigned int read_res = ReadUIntFromArray(array,0);
-	printf("Read: %u\n", read_res);*/
-	
-//testing short int functions
-	/*unsigned char array[4] = {0x00, 0x99, 0x90, 0xFA};
-	short int mint = ReadShortInt(array,0);
-	printf("old: %hd\n", mint);
-	WriteShortInt(array,0,217);
-	mint = ReadShortInt(array,0);
-	printf("new value: %hd\n", mint);
-	WriteShortInt(array,2,182);
-	short int mint2 = ReadShortInt(array,2);
-	mint = ReadShortInt(array,0);
-	printf("finally %hd and %hd\n", mint, mint2);*/
-	
-//testing space finding
-	/*unsigned char array[4] = {0b10101100, 0b00111111, 0b11100000, 0b11111111};
-	//read bit at location n L->R
-	int n = 10;
-	int x = ReadBit(array, 0, 19);
-	int y = ReadBit(array, 0, 31);
-	printf("x:%d (should be 0) and y:%d (should be 1)\n", x, y);*/
-	
-//testing space finding
-	/*unsigned char array[4] = {0b10101100, 0b00111111, 0b11100000, 0b11111111};
-	//read bit at location n L->R
-	int n = 10;
-	int x = ReadBit(array, 0, 19);
-	int y = ReadBit(array, 0, 31);
-	//printf("x:%d (should be 0) and y:%d (should be 1)\n", x, y);
-	int z = FreeSpaceAddress(9, array, 0, 32);
-	printf("Expecting -1: Actual %d\n", z);*/
-	
-//testing bit writing
-	/*unsigned char array[4] = {0b00000000, 0b00000000, 0b00000000, 0b00000000};
-	int x = ReadBit(array, 0, 19);
-	WriteBit(1, array, 0, 19);
-	int y = ReadBit(array, 0, 19);
-	printf("Result 1:%d, Result2:%d",x,y);*/
-
-//test parsing a file name
-	/*unsigned char array[10];
-	char name[7];
-	char ext[3];
-	
-	//initial array
-	printf("Initial: ");
-	for(int i = 0; i<10; i++){
-		printf("%02X ", array[i]);
-	}
-	printf("\n");
-	
-	ParseFileName("world.cs", name, ext);
-	printf("Name: %s, Ext: %s\n", name, ext);
-	
-	//copy in name
-	for(int i = 0; i<7; i++){
-		array[i] = (unsigned char)name[i];
-	}
-	
-	for(int i = 0; i < 3; i++){
-		array[i+7] = (unsigned char)ext[i];
-	}
-	
-	//final array
-	printf("Final: ");
-	for(int i = 0; i<10; i++){
-		printf("%02X ", array[i]);
-	}
-	printf("\n");
-	for(int i = 0; i<10; i++){
-		printf("%c", array[i]);
-	}
-	printf("\n");
-	*/
-	
-//testing creating a directory entry
-	/*AddDirEntry("world.cs", 10, 5);
-	AddDirEntry("note.txt", 1, 16);
-	AddDirEntry("vibe.c", 10, 17);
-	RemoveDirEntry("vibe.c");
-	AddDirEntry("cj.cs", 5, 17);
-
-	
-	printf("\nHead: %hd, Tail: %hd\n", ReadSInt(DIR_HEAD), ReadSInt(DIR_TAIL));
-	
-	PrintDir();
-	
-	printf("\n");
-	printf("Hex read:");
-	for(int i = DIR_START; i < (DIR_START + DIR_ENTRY_LEN*5); i++){
-		if( i % 16 == 0){
-			printf("\n");
-			printf("%d: ", i);
-		}
-		printf("%02X ", MEMORY[i]);
-		
-	}*/
-
-//testing global file table
-	/*printf("\n\n");
-	GlobalTableEntry x, y;
-	strcpy(x.fname, "world.txt");
-	x.fcb.fileSizeBlocks = 77;
-	x.fcb.firstBlockIndex = 77;
-	x.instances = 1;
-	strcpy(y.fname, "zoom.c");
-	y.fcb.fileSizeBlocks = 1;
-	y.fcb.firstBlockIndex = 1;
-	y.instances = 1;
-	FindInGlobalTable("world.txt");
-	AppendToGlobalTable(x);
-	FindInGlobalTable("world.txt");
-	AppendToGlobalTable(y);
-	RemoveFromGlobalTable("world.txt");
-	AppendToGlobalTable(y);*/
-	
-//testing appending to local table
-	/*struct LocalTableEntry localTable[MAX_LOCAL_FILES];
-	struct LocalTableEntry x,y;
-	strcpy(x.fname,"world.txt");
-	x.handle = 9;
-	
-	strcpy(y.fname, "note.cs");
-	y.handle = 100;
-	
-	AppendToLocalTable(localTable, x);
-	printf("LT0: %s (expect world.txt)\n", localTable[0].fname);
-	RemoveFromLocalTable(localTable, "world.txt");
-	printf("LT0: %s (expect nothing)\n", localTable[0].fname);
-	FindInLocalTable(localTable, "world.txt");//expect not found
-	AppendToLocalTable(localTable, y);
-	printf("LT0: %s (expect note.cs)\n", localTable[0].fname);
-	AppendToLocalTable(localTable, x);
-	printf("LT1: %s (expect world.txt)\n", localTable[1].fname);
-	FindInLocalTable(localTable, "world.txt");//expect found*/
-
-
-/*
-	//testing Create Function
-	int x = Create("world.txt", 20, localTable);
-	int y = Create("p.c", 5, localTable);
-
-	//Testing read write
-	unsigned char buffer[20 * BLOCK_SIZE_BYTES];
-	Read(x, buffer);
-	printf("X initial read:%s\n", buffer); 
-	unsigned char buffls[] = "Hello World!";
-	unsigned char ytest[] = "Whether we wanted it or not weve stepped into war with the cabal on mars!\nSo lets get to taking out their command one by one...\n\n";
-	Write(x, buffls);
-	Write(y, ytest);
-	unsigned char yout[5 * BLOCK_SIZE_BYTES];
-	Read(x, buffer);
-	printf("X final read: %s\n", buffer);
-	Read(y, yout);
-	printf("Y final read: %s\n", yout);
-	
-	int closeRes = Close(x, localTable);
-	printf("close res: %d\n", closeRes);
-	
-	printf("\n\nClose res:\nGFT0: %s, %d, %d, %d (expect , 0, 0, 0)\n LFT: %s, %d (expect ,0)\n\n", GLOBAL_FILE_TABLE[x].fname, GLOBAL_FILE_TABLE[x].fcb.fileSizeBlocks, GLOBAL_FILE_TABLE[x].fcb.firstBlockIndex, GLOBAL_FILE_TABLE[x].instances, localTable[0].fname, localTable[0].handle);
-	
-	Delete("world.txt");
-	Read(x, buffer);
-	printf("X deleted read: %s\n", buffer);
-	Write(x, "hello world!");
-	
-	PrintDir();
-//hope i can delete this mess*/
