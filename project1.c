@@ -677,14 +677,13 @@ int RemoveDirEntry(char *fname){
 }
 
 void PrintDir(){
-	//TODO: remove next for production
 	seizenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	//get VCB information
 	int free = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);
 	int total = ReadUInt(VOLUME_CONTROL_BLOCK.BLOCK_COUNT);
 	printf("%d of %d Blocks are free:\n", free, total);
 	
-	printf("%-15s %-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address", "Next");
+	printf("%-15s %-15s %-15s %-15s\n", "Name", "Extension", "Size", "Start Address");
 	printf("---------------------------------------------------------------------\n");//perfect size
 	int entry = ReadSInt(DIR_HEAD);
 	while(entry != 0){
@@ -695,11 +694,11 @@ void PrintDir(){
 		short int next;
 		GetDirEntry(entry, entryName, entryExt, &size, &loc, &next);
 		
-		printf("%-15s %-15s %-15d %-15d %-15d\n", entryName, entryExt, size, loc, next);	
+		printf("%-15s %-15s %-15d %-15d\n", entryName, entryExt, size, loc);	
 		
 		entry = next;
 	}
-	
+	printf("\n\n");
 	releasenMemory(DIR_BLOCK_START, DIR_BLOCK_END);
 	return;
 }
@@ -1065,7 +1064,7 @@ int main() {
 	unsigned int free = ReadUInt(VOLUME_CONTROL_BLOCK.FREE_BLOCKS);	
 	releaseMemory(VCB_BLOCK);
 	
-	printf("Memory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n\n", num, size, free);
+	printf("\n\nMemory Initialized! \n%u blocks were created of size %u bytes with %u blocks free.\n\n", num, size, free);
 	
 	//pthreads setup:
 	pthread_t tid[3];
